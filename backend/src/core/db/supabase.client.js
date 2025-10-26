@@ -1,3 +1,4 @@
+// supabase.client.js
 // Client server-side (service role). No exponer al front.
 import { createClient } from '@supabase/supabase-js'
 import { env } from '../config/env.js'

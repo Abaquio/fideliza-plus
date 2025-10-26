@@ -14,6 +14,7 @@ import saludRoutes from './routes/salud.routes.js'
 import clientesRoutes from './routes/clientes.routes.js'
 
 import { env } from '../core/config/env.js'
+import { supabase } from '../core/db/supabase.client.js' // ✅ Import del cliente Supabase
 
 const app = Fastify({ logger: true })
 
@@ -32,6 +33,21 @@ await app.register(clientesRoutes, { prefix: '/api' })
 
 // Manejo de errores
 app.setErrorHandler(errorMiddleware())
+
+// ✅ Comprobación de conexión a Supabase
+try {
+  const { data, error } = await supabase.from('clientes').select('id').limit(1)
+
+  if (error) {
+    app.log.error({ msg: '❌ Error conectando a Supabase', error })
+    process.exit(1)
+  } else {
+    app.log.info('✅ Conectado a Supabase correctamente')
+  }
+} catch (err) {
+  app.log.error({ msg: '❌ Excepción comprobando Supabase', err })
+  process.exit(1)
+}
 
 // Start
 const port = env.PORT || 3000
