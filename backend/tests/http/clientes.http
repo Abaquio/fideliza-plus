@@ -1,0 +1,17 @@
+### Health
+GET http://localhost:3000/api/health
+
+### Listado clientes
+GET http://localhost:3000/api/clientes
+
+### Crear (beta, requiere x-admin-key si configuras ADMIN_API_KEY)
+POST http://localhost:3000/api/clientes
+Content-Type: application/json
+x-admin-key: {{ADMIN_API_KEY}}
+
+{
+  "rut": "12.345.678-9",
+  "nombreCompleto": "María González",
+  "email": "maria@example.com",
+  "telefono": "+56 9 1234 5678"
+}
