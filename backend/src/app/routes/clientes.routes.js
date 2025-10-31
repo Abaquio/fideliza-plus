@@ -1,19 +1,33 @@
-import * as clientesController from '../controllers/clientes.controller.js'
-import { authMiddleware } from '../middlewares/auth.middleware.js'
+// src/app/routes/clientes.routes.js
+import { getClientes } from '../controllers/clientes.controller.js'
+import { getClienteById } from '../controllers/clientes.controller.js'
 
 export default async function clientesRoutes(app) {
-  // Listado / búsqueda
-  app.get('/clientes', clientesController.listar)
+  app.get('/clientes', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          limit:   { type: 'number' },
+          offset:  { type: 'number' },
+          search:  { type: 'string' },
+          by:      { type: 'string', enum: ['rut'] },
+        },
+        additionalProperties: true,
+      },
+    },
+    handler: getClientes,
+  })
 
-  // Crear nuevo cliente (protegido en beta si quieres)
-  app.post('/clientes', { preHandler: authMiddleware() }, clientesController.crear)
-
-  // Detalle por ID
-  app.get('/clientes/:id', clientesController.detalle)
-
-  // Editar (v1)
-  app.put('/clientes/:id', { preHandler: authMiddleware() }, clientesController.editar)
-
-  // Cambiar estado (v1)
-  app.patch('/clientes/:id/estado', { preHandler: authMiddleware() }, clientesController.cambiarEstado)
+  // NUEVO: detalle
+  app.get('/clientes/:id', {
+    schema: {
+      params: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+    },
+    handler: getClienteById,
+  })
 }

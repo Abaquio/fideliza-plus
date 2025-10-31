@@ -1,156 +1,192 @@
 "use client"
 
-import { X, User, Phone, Mail, Award, ShoppingBag, FileText } from "lucide-react"
+import { useEffect, useState } from "react"
+import { X, User, Mail, Phone, BadgeInfo } from "lucide-react"
 
 export default function ClientDetailsDrawer({ open, onClose, client, onEdit }) {
-  if (!client) return null
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [detail, setDetail] = useState(null)
+
+  // Carga detalle desde la API cuando se abre el drawer
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      if (!open || !client?.id) {
+        setDetail(null)
+        return
+      }
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch(`/api/clientes/${client.id}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (!cancelled) setDetail(data)
+      } catch (e) {
+        console.error("Detalle cliente:", e)
+        if (!cancelled) setError("No se pudo cargar el detalle del cliente.")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [open, client?.id])
+
+  // Fuente única de datos para el render (sin romper diseño)
+  const data = detail || client || {}
+
+  const nombre = data.nombreCompleto || data.nombre_completo || "—"
+  const rut = data.rut_formateado || data.rut || "—"
+  const dv = data.dv || "—"
+  const email = data.email || "—"
+  const telefono = data.telefono || "—"
+  const puntos = data.puntos ?? 0
+  const compras = data.compras ?? 0
+
+  // Iniciales para el avatar
+  const iniciales =
+    nombre && nombre !== "—"
+      ? nombre
+          .trim()
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((n) => n[0]?.toUpperCase() ?? "")
+          .join("") || "—"
+      : "—"
 
   return (
-    <>
-      {/* Overlay */}
+    <div
+      className={`fixed inset-0 z-50 ${open ? "pointer-events-auto" : "pointer-events-none"}`}
+      aria-hidden={!open}
+    >
+      {/* Backdrop (se mantiene borroso por el contenedor externo) */}
       <div
-        className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity duration-300 ${
-          open ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
+        className={`absolute inset-0 transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
         onClick={onClose}
       />
 
-      {/* Drawer */}
-      <div
-        className={`fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+      {/* Drawer a la derecha (misma estructura y clases base) */}
+      <aside
+        className={`absolute right-0 top-0 h-full w-full sm:w-[440px] bg-white shadow-xl border-l border-border transform transition-transform duration-300 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
+        role="dialog"
+        aria-modal="true"
       >
-        {/* Header con gradiente */}
-        <div className="bg-gradient-to-r from-[#480048] to-[#F07241] px-6 py-5 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white">Detalles de cliente</h2>
+        {/* Header con gradiente y botón cerrar */}
+        <div className="py-4 px-6 bg-gradient-to-r from-[#480048] via-[#601848] to-[#F07241] text-white flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Detalles de cliente</h3>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+            className="p-2 rounded hover:bg-white/15 transition-colors"
             aria-label="Cerrar"
           >
-            <X className="w-6 h-6 text-white" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="overflow-y-auto h-[calc(100%-180px)] px-6 py-6 space-y-6">
-          {/* Avatar y nombre */}
-          <div className="flex items-center gap-4 pb-6 border-b border-gray-200">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#480048] to-[#F07241] flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-              {client.nombre
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
+        {/* Contenido */}
+        <div className="p-6 space-y-6 overflow-y-auto h-[calc(100%-64px)]">
+          {/* Cabecera con avatar y nombre */}
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#480048] to-[#F07241] text-white flex items-center justify-center text-lg font-bold shadow-md">
+              {iniciales}
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">{client.nombre}</h3>
-              <p className="text-sm text-gray-500">Cliente activo</p>
+            <div className="min-w-0">
+              <div className="text-lg font-semibold text-foreground truncate">{nombre}</div>
+              <div className="text-sm text-muted-foreground">Cliente activo</div>
             </div>
           </div>
 
-          {/* Datos principales */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-              <User className="w-4 h-4 text-[#480048]" />
-              Datos principales
-            </h4>
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase">Nombre completo</label>
-                <p className="text-base font-medium text-gray-900 mt-1">{client.nombre}</p>
+          {/* Estado de carga / error (no altera diseño principal) */}
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <BadgeInfo className="w-4 h-4" />
+              Cargando…
+            </div>
+          )}
+          {error && !loading && (
+            <div className="text-sm text-red-600">{error}</div>
+          )}
+
+          {/* Secciones (misma estructura visual) */}
+          <div className="space-y-6">
+            {/* Datos principales */}
+            <section>
+              <div className="text-xs font-semibold tracking-wide text-muted-foreground mb-3">
+                DATOS PRINCIPALES
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="bg-card border border-border rounded-lg p-4 grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">RUT</label>
-                  <p className="text-base font-medium text-gray-900 mt-1">{client.rut || "12.345.678"}</p>
+                  <div className="text-xs text-muted-foreground">NOMBRE COMPLETO</div>
+                  <div className="text-sm font-medium text-foreground">{nombre}</div>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">DV</label>
-                  <p className="text-base font-medium text-gray-900 mt-1">{client.dv || "9"}</p>
+                  <div className="text-xs text-muted-foreground">RUT</div>
+                  <div className="text-sm font-medium text-foreground">{rut}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">DV</div>
+                  <div className="text-sm font-medium text-foreground">{dv}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">PUNTOS</div>
+                  <div className="text-sm font-medium text-foreground">{puntos}</div>
                 </div>
               </div>
-            </div>
-          </div>
+            </section>
 
-          {/* Contacto */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-              <Phone className="w-4 h-4 text-[#480048]" />
-              Contacto
-            </h4>
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <Mail className="w-5 h-5 text-[#601848]" />
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Email</label>
-                  <p className="text-base font-medium text-gray-900 mt-0.5">{client.email}</p>
+            {/* Contacto */}
+            <section>
+              <div className="text-xs font-semibold tracking-wide text-muted-foreground mb-3">
+                CONTACTO
+              </div>
+              <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">EMAIL</div>
+                    <div className="text-sm font-medium text-foreground break-all">{email}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center">
+                    <Phone className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">TELÉFONO</div>
+                    <div className="text-sm font-medium text-foreground break-words">{telefono}</div>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Phone className="w-5 h-5 text-[#601848]" />
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Teléfono</label>
-                  <p className="text-base font-medium text-gray-900 mt-0.5">{client.telefono}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+            </section>
 
-          {/* Estado */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-              <Award className="w-4 h-4 text-[#480048]" />
-              Estado
-            </h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-gradient-to-br from-[#F07241]/10 to-[#F07241]/5 rounded-lg p-4 border border-[#F07241]/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <Award className="w-5 h-5 text-[#F07241]" />
-                  <label className="text-xs font-semibold text-gray-600 uppercase">Puntos</label>
-                </div>
-                <p className="text-2xl font-bold text-[#F07241]">{client.puntos.toLocaleString()}</p>
-              </div>
-              <div className="bg-gradient-to-br from-[#480048]/10 to-[#480048]/5 rounded-lg p-4 border border-[#480048]/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <ShoppingBag className="w-5 h-5 text-[#480048]" />
-                  <label className="text-xs font-semibold text-gray-600 uppercase">Compras</label>
-                </div>
-                <p className="text-2xl font-bold text-[#480048]">{client.compras}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Notas */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-              <FileText className="w-4 h-4 text-[#480048]" />
-              Notas
-            </h4>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600 leading-relaxed">
-                {client.notas || "No hay notas adicionales para este cliente."}
-              </p>
+            {/* Acciones (mantiene estilos) */}
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <button
+                onClick={() => onEdit?.(data)}
+                className="flex-1 px-5 py-3 bg-gradient-to-r from-[#480048] to-[#F07241] text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-[#480048]/25 transition-all"
+              >
+                Editar cliente
+              </button>
+              <button
+                onClick={onClose}
+                className="px-5 py-3 border border-border rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
-
-        {/* Footer con botones */}
-        <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 flex gap-3">
-          <button
-            onClick={onEdit}
-            className="flex-1 px-6 py-3 bg-gradient-to-r from-[#480048] to-[#F07241] text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-[#480048]/30 transition-all"
-          >
-            Editar cliente
-          </button>
-          <button
-            onClick={onClose}
-            className="px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors border border-gray-300"
-          >
-            Cerrar
-          </button>
-        </div>
-      </div>
-    </>
+      </aside>
+    </div>
   )
 }
