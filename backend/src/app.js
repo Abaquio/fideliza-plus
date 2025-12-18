@@ -6,6 +6,7 @@ import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 import authRoutes from "./routes/auth.routes.js";
+import clientesRoutes from "./routes/clientes.routes.js"
 
 export const app = express();
 
@@ -19,5 +20,6 @@ app.get("/health", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/clientes", clientesRoutes)
 
 app.use(errorHandler);
