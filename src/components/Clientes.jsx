@@ -2,8 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { Search, Plus, Eye, Edit, Mail, Phone } from "lucide-react"
+
 import NuevoClienteModal from "../components/modales/NuevoClienteModal"
 import ImportarClientesModal from "../components/modales/ImportarClientesModal"
+
+// ✅ Nuevos modales
+import VerClienteModal from "../components/modales/VerClienteModal"
+import EditarClienteModal from "../components/modales/EditarClienteModal"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
 
@@ -36,6 +41,11 @@ export default function Clientes() {
   // ✅ Import modal
   const [showImportModal, setShowImportModal] = useState(false)
   const [importing, setImporting] = useState(false)
+
+  // ✅ Ver / Edit modales
+  const [selectedCliente, setSelectedCliente] = useState(null)
+  const [showViewModal, setShowViewModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
 
   const [clientes, setClientes] = useState([])
   const [loading, setLoading] = useState(false)
@@ -84,7 +94,6 @@ export default function Clientes() {
           ...c,
           name: getDisplayName(c),
           phone: c.telefono || "-",
-          email: c.email || "-",
           points,
           purchases,
           tier,
@@ -141,35 +150,55 @@ export default function Clientes() {
     }
   }
 
-  // ✅ Por ahora: solo simula importación (después lo conectamos a /api/clientes/importar)
-  async function handleImportClientes(driveUrl) {
-    setImporting(true)
+  // ✅ Guardar cambios desde EditarClienteModal (PATCH)
+  async function handleUpdateCliente(payload) {
+    setSaving(true)
     setErrorMsg("")
     try {
-      console.log("Importar clientes desde:", driveUrl)
-      // Luego: await fetch(`${API_URL}/api/clientes/importar`, { method:'POST', ... })
-      // Y al final: await fetchClientes(searchTerm)
-      setShowImportModal(false)
+      const token = getAuthToken()
+      const id = payload?.id
+      if (!id) throw new Error("Falta id del cliente")
+
+      const { id: _ignore, ...body } = payload
+
+      const res = await fetch(`${API_URL}/api/clientes/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || "No se pudo actualizar el cliente")
+
+      // cerrar modal y refrescar
+      setShowEditModal(false)
+      setSelectedCliente(null)
+      await fetchClientes(searchTerm)
     } catch (e) {
-      setErrorMsg(e.message || "Error importando clientes")
+      setErrorMsg(e.message || "Error actualizando cliente")
+      // dejamos el modal abierto, para que el usuario no pierda lo editado
+      throw e
     } finally {
-      setImporting(false)
+      setSaving(false)
     }
-  }
-
-  // ✅ Recargar una fuente guardada (misma acción que importar por ahora)
-  async function handleReloadSource(source) {
-    return handleImportClientes(source.url)
-  }
-
-  // ✅ Quitar fuente (la UI ya la elimina sola, esto queda por si luego lo guardas en BD)
-  function handleRemoveSource(source) {
-    console.log("Fuente removida:", source)
   }
 
   const emptyState = useMemo(() => {
     return !loading && clientes.length === 0
   }, [loading, clientes.length])
+
+  const openView = (cliente) => {
+    setSelectedCliente(cliente)
+    setShowViewModal(true)
+  }
+
+  const openEdit = (cliente) => {
+    setSelectedCliente(cliente)
+    setShowEditModal(true)
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -254,17 +283,28 @@ export default function Clientes() {
                 </div>
                 <div>
                   <h3 className="font-bold">{cliente.name}</h3>
-                  <span className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getTierColor(cliente.tier)}`}>
+                  <span
+                    className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getTierColor(cliente.tier)}`}
+                  >
                     {cliente.tier}
                   </span>
                 </div>
               </div>
 
               <div className="flex gap-1">
-                <button className="p-2 hover:bg-muted rounded-lg transition-colors" title="Ver">
+                <button
+                  className="p-2 hover:bg-muted rounded-lg transition-colors"
+                  title="Ver"
+                  onClick={() => openView(cliente)}
+                >
                   <Eye className="w-4 h-4" />
                 </button>
-                <button className="p-2 hover:bg-muted rounded-lg transition-colors" title="Editar">
+
+                <button
+                  className="p-2 hover:bg-muted rounded-lg transition-colors"
+                  title="Editar"
+                  onClick={() => openEdit(cliente)}
+                >
                   <Edit className="w-4 h-4" />
                 </button>
               </div>
@@ -273,18 +313,20 @@ export default function Clientes() {
             <div className="space-y-2 mb-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="w-4 h-4" />
-                <span className="truncate">{cliente.email}</span>
+                <span className="truncate">{cliente.email || "-"}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="w-4 h-4" />
-                <span className="truncate">{cliente.phone}</span>
+                <span className="truncate">{cliente.phone || "-"}</span>
               </div>
               <div className="text-xs text-muted-foreground">RUT: {cliente.rut}</div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
               <div>
-                <p className="text-2xl font-bold text-primary">{Number(cliente.points || 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-primary">
+                  {Number(cliente.points || 0).toLocaleString()}
+                </p>
                 <p className="text-xs text-muted-foreground">Puntos</p>
               </div>
               <div>
@@ -300,6 +342,7 @@ export default function Clientes() {
         ))}
       </div>
 
+      {/* Modales existentes */}
       <NuevoClienteModal
         open={showModal}
         onClose={() => setShowModal(false)}
@@ -310,10 +353,30 @@ export default function Clientes() {
       <ImportarClientesModal
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
-        onImport={handleImportClientes}
-        onReloadSource={handleReloadSource}
-        onRemoveSource={handleRemoveSource}
+        onAfterChange={() => fetchClientes(searchTerm)}
         isImporting={importing}
+      />
+
+      {/* ✅ Ver perfil */}
+      <VerClienteModal
+        open={showViewModal}
+        cliente={selectedCliente}
+        onClose={() => {
+          setShowViewModal(false)
+          setSelectedCliente(null)
+        }}
+      />
+
+      {/* ✅ Editar perfil */}
+      <EditarClienteModal
+        open={showEditModal}
+        cliente={selectedCliente}
+        onClose={() => {
+          setShowEditModal(false)
+          setSelectedCliente(null)
+        }}
+        onSubmit={handleUpdateCliente}
+        isSaving={saving}
       />
     </div>
   )
