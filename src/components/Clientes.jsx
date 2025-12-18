@@ -10,6 +10,9 @@ import ImportarClientesModal from "../components/modales/ImportarClientesModal"
 import VerClienteModal from "../components/modales/VerClienteModal"
 import EditarClienteModal from "../components/modales/EditarClienteModal"
 
+// ✅ Validado UI (mismo que usas en otros lados)
+import ValidadoCard from "../ui/validado"
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
 
 function getAuthToken() {
@@ -51,6 +54,17 @@ export default function Clientes() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
+
+  // ✅ Validado (para crear cliente)
+  const [validadoOpen, setValidadoOpen] = useState(false)
+  const [validadoTitle, setValidadoTitle] = useState("Listo")
+  const [validadoMessage, setValidadoMessage] = useState("Operación realizada.")
+
+  const showValidado = (title, message) => {
+    setValidadoTitle(title || "Listo")
+    setValidadoMessage(message || "Operación realizada.")
+    setValidadoOpen(true)
+  }
 
   const getTierColor = (tier) => {
     switch (tier) {
@@ -138,11 +152,18 @@ export default function Clientes() {
         body: JSON.stringify(payload),
       })
 
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || "No se pudo crear el cliente")
 
       setShowModal(false)
       await fetchClientes(searchTerm)
+
+      // ✅ Validado al terminar crear (sin cambiar diseño)
+      const nombre = `${payload?.nombres || ""} ${payload?.apellidos || ""}`.trim()
+      showValidado(
+        "Cliente creado",
+        nombre ? `Se creó el cliente "${nombre}" correctamente.` : "Cliente creado correctamente."
+      )
     } catch (e) {
       setErrorMsg(e.message || "Error creando cliente")
     } finally {
@@ -284,7 +305,9 @@ export default function Clientes() {
                 <div>
                   <h3 className="font-bold">{cliente.name}</h3>
                   <span
-                    className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getTierColor(cliente.tier)}`}
+                    className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getTierColor(
+                      cliente.tier
+                    )}`}
                   >
                     {cliente.tier}
                   </span>
@@ -377,6 +400,14 @@ export default function Clientes() {
         }}
         onSubmit={handleUpdateCliente}
         isSaving={saving}
+      />
+
+      {/* ✅ Validado global (solo para crear cliente acá) */}
+      <ValidadoCard
+        open={validadoOpen}
+        title={validadoTitle}
+        message={validadoMessage}
+        onClose={() => setValidadoOpen(false)}
       />
     </div>
   )

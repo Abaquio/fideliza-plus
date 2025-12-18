@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { RefreshCw, Trash2, Link2, Plus } from "lucide-react"
 
-// ✅ UI nueva
 import ConfirmDialog from "../../ui/confirm"
 import ValidadoCard from "../../ui/validado"
 
@@ -43,12 +42,16 @@ export default function ImportarClientesModal({
   const [confirmTitle, setConfirmTitle] = useState("Confirmar acción")
   const [confirmMessage, setConfirmMessage] = useState("¿Estás seguro de continuar?")
   const [confirmLabel, setConfirmLabel] = useState("Confirmar")
+  const [cancelLabel, setCancelLabel] = useState("Cancelar")
   const [pendingAction, setPendingAction] = useState(null)
+  const [pendingCancelAction, setPendingCancelAction] = useState(null)
 
   // ✅ Validado UI
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoTitle, setValidadoTitle] = useState("Acción realizada")
-  const [validadoMessage, setValidadoMessage] = useState("Operación completada correctamente.")
+  const [validadoMessage, setValidadoMessage] = useState(
+    "Operación completada correctamente."
+  )
 
   const token = useMemo(() => getAuthToken(), [])
 
@@ -58,11 +61,13 @@ export default function ImportarClientesModal({
     setValidadoOpen(true)
   }
 
-  function openConfirm({ title, message, label, action }) {
+  function openConfirm({ title, message, label, cancelText, action, onCancelAction }) {
     setConfirmTitle(title || "Confirmar acción")
     setConfirmMessage(message || "¿Estás seguro de continuar?")
     setConfirmLabel(label || "Confirmar")
+    setCancelLabel(cancelText || "Cancelar")
     setPendingAction(() => action)
+    setPendingCancelAction(() => onCancelAction)
     setConfirmOpen(true)
   }
 
@@ -77,7 +82,8 @@ export default function ImportarClientesModal({
         },
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || "No se pudieron cargar las fuentes")
+      if (!res.ok)
+        throw new Error(data?.message || "No se pudieron cargar las fuentes")
       setSources(Array.isArray(data?.fuentes) ? data.fuentes : [])
     } catch (e) {
       setError(e.message || "Error cargando fuentes")
@@ -94,6 +100,7 @@ export default function ImportarClientesModal({
       setError("")
       setConfirmOpen(false)
       setPendingAction(null)
+      setPendingCancelAction(null)
       fetchFuentes()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,7 +110,88 @@ export default function ImportarClientesModal({
     if (e.target === e.currentTarget) onClose?.()
   }
 
-  const canAdd = useMemo(() => nombre.trim().length > 0 && url.trim().length > 0, [nombre, url])
+  const canAdd = useMemo(
+    () => nombre.trim().length > 0 && url.trim().length > 0,
+    [nombre, url]
+  )
+
+  async function recargarConEstrategia(fuenteId, estrategia) {
+    const res = await fetch(`${API_URL}/api/clientes/fuentes/${fuenteId}/recargar`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ estrategia_duplicados: estrategia }),
+    })
+
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.message || "No se pudo importar con estrategia")
+    return data
+  }
+
+  function preguntarDuplicados({ fuenteId, nombreFuente, duplicadosCantidad }) {
+    openConfirm({
+      title: "RUT repetidos detectados",
+      message:
+        `Se encontraron ${duplicadosCantidad} cliente(s) con RUT que ya existe(n).\n\n` +
+        `¿Quieres REEMPLAZAR esos registros con los datos de la fuente "${nombreFuente}"?\n\n` +
+        `- Reemplazar: sobrescribe los existentes\n` +
+        `- No reemplazar: omite los repetidos y solo inserta nuevos`,
+      label: "Reemplazar",
+      cancelText: "No reemplazar",
+      action: async () => {
+        // Reemplazar
+        setWorking(true)
+        setError("")
+        try {
+          const data = await recargarConEstrategia(fuenteId, "reemplazar")
+          await fetchFuentes()
+          onAfterChange?.()
+          if (data?.procesados || data?.validos || data?.invalidos) {
+            showValidado(
+              "Importación finalizada",
+              `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
+            )
+          } else if (data?.resumen) {
+            showValidado(
+              "Importación finalizada",
+              `Importación OK — Procesados: ${data.resumen.procesados}, Válidos: ${data.resumen.validos}, Inválidos: ${data.resumen.invalidos}`
+            )
+          } else {
+            showValidado("Importación finalizada", "Importación completada.")
+          }
+        } finally {
+          setWorking(false)
+        }
+      },
+      onCancelAction: async () => {
+        // No reemplazar (omitir duplicados)
+        setWorking(true)
+        setError("")
+        try {
+          const data = await recargarConEstrategia(fuenteId, "omitir")
+          await fetchFuentes()
+          onAfterChange?.()
+          if (data?.procesados || data?.validos || data?.invalidos) {
+            showValidado(
+              "Importación finalizada",
+              `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
+            )
+          } else if (data?.resumen) {
+            showValidado(
+              "Importación finalizada",
+              `Importación OK — Procesados: ${data.resumen.procesados}, Válidos: ${data.resumen.validos}, Inválidos: ${data.resumen.invalidos}`
+            )
+          } else {
+            showValidado("Importación finalizada", "Importación completada.")
+          }
+        } finally {
+          setWorking(false)
+        }
+      },
+    })
+  }
 
   async function doCrearFuente() {
     const n = nombre.trim()
@@ -118,7 +206,7 @@ export default function ImportarClientesModal({
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        // ✅ IMPORTAR INMEDIATO al crear la fuente
+        // ✅ Import inmediato (backend ahora lo soporta)
         body: JSON.stringify({ nombre: n, url: u, importar_ahora: true }),
       })
 
@@ -130,7 +218,18 @@ export default function ImportarClientesModal({
       await fetchFuentes()
       onAfterChange?.()
 
-      // ✅ validado
+      // ✅ Si detectó duplicados, preguntar reemplazar o no
+      if (data?.requiere_confirmacion && data?.fuente?.id) {
+        const cantidad = data?.duplicados?.cantidad || 0
+        preguntarDuplicados({
+          fuenteId: data.fuente.id,
+          nombreFuente: data.fuente.nombre || "Fuente",
+          duplicadosCantidad: cantidad,
+        })
+        return
+      }
+
+      // ✅ validado normal
       if (data?.resumen) {
         showValidado(
           "Fuente ingresada",
@@ -152,13 +251,16 @@ export default function ImportarClientesModal({
 
     if (!n) return setError("Debes ingresar un nombre para la fuente")
     if (!u) return setError("Debes ingresar un enlace")
-    if (!isValidGoogleUrl(u)) return setError("El enlace debe ser de Google Drive/Sheets")
+    if (!isValidGoogleUrl(u))
+      return setError("El enlace debe ser de Google Drive/Sheets")
 
     openConfirm({
       title: "Confirmar ingreso de fuente",
       message: `Se guardará la fuente "${n}" y se importarán los clientes desde el link entregado. ¿Continuar?`,
       label: "Ingresar",
+      cancelText: "Cancelar",
       action: doCrearFuente,
+      onCancelAction: null,
     })
   }
 
@@ -173,8 +275,20 @@ export default function ImportarClientesModal({
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       })
+
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || "No se pudo recargar la fuente")
+
+      // ✅ Si hay duplicados, pedir opción
+      if (data?.requiere_confirmacion) {
+        const cantidad = data?.duplicados?.cantidad || 0
+        preguntarDuplicados({
+          fuenteId: source.id,
+          nombreFuente: source.nombre || "Fuente",
+          duplicadosCantidad: cantidad,
+        })
+        return
+      }
 
       await fetchFuentes()
       onAfterChange?.()
@@ -185,7 +299,15 @@ export default function ImportarClientesModal({
           `Importación OK — Procesados: ${data.resumen.procesados}, Válidos: ${data.resumen.validos}, Inválidos: ${data.resumen.invalidos}`
         )
       } else {
-        showValidado("Fuente recargada", "La fuente se recargó correctamente.")
+        // por si backend responde directo en root
+        if (data?.procesados || data?.validos || data?.invalidos) {
+          showValidado(
+            "Fuente recargada",
+            `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
+          )
+        } else {
+          showValidado("Fuente recargada", "La fuente se recargó correctamente.")
+        }
       }
     } catch (e) {
       setError(e.message || "Error recargando fuente")
@@ -224,7 +346,9 @@ export default function ImportarClientesModal({
       title: "Eliminar fuente",
       message: `¿Eliminar la fuente "${source.nombre}"?\n\nEsto intentará borrar también los clientes asociados a esta fuente.`,
       label: "Eliminar",
+      cancelText: "Cancelar",
       action: () => doEliminarFuente(source),
+      onCancelAction: null,
     })
   }
 
@@ -237,8 +361,12 @@ export default function ImportarClientesModal({
       className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
       onMouseDown={handleBackdropClick}
     >
-      {/* ✅ Modal tamaño L */}
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in">
+      <div
+        className="
+          bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in
+          max-h-[90vh] overflow-y-auto overscroll-contain
+        "
+      >
         <h2 className="text-2xl font-bold mb-2">Importar Clientes</h2>
         <p className="text-sm text-muted-foreground mb-4">
           Agrega fuentes (Google Sheets/Drive), recárgalas cuando cambien y mantén tu base actualizada.
@@ -251,7 +379,6 @@ export default function ImportarClientesModal({
         )}
 
         <div className="space-y-4">
-          {/* Crear fuente */}
           <div className="bg-muted/40 border border-border rounded-lg p-3 space-y-3">
             <div>
               <label className="block text-sm font-medium mb-2">Nombre de la fuente</label>
@@ -287,7 +414,6 @@ export default function ImportarClientesModal({
             </button>
           </div>
 
-          {/* Formato esperado */}
           <div className="bg-muted/40 border border-border rounded-lg p-3 text-sm text-muted-foreground">
             <p className="font-medium mb-1">Formato esperado del Excel/Sheet:</p>
             <ul className="list-disc list-inside space-y-1">
@@ -299,7 +425,6 @@ export default function ImportarClientesModal({
             </ul>
           </div>
 
-          {/* Lista fuentes */}
           <div className="bg-muted/40 border border-border rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium">Fuentes guardadas</p>
@@ -333,7 +458,6 @@ export default function ImportarClientesModal({
                     </div>
 
                     <div className="flex gap-2 shrink-0">
-                      {/* ✅ Recargar con color distinto */}
                       <button
                         onClick={() => handleRecargar(s)}
                         disabled={disabled}
@@ -343,7 +467,6 @@ export default function ImportarClientesModal({
                         <RefreshCw className="w-4 h-4" />
                       </button>
 
-                      {/* ✅ Eliminar en rojo */}
                       <button
                         onClick={() => handleEliminar(s)}
                         disabled={disabled}
@@ -359,7 +482,6 @@ export default function ImportarClientesModal({
             )}
           </div>
 
-          {/* Footer */}
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
@@ -372,21 +494,24 @@ export default function ImportarClientesModal({
         </div>
       </div>
 
-      {/* ✅ Confirm + Validado */}
       <ConfirmDialog
         open={confirmOpen}
         title={confirmTitle}
         message={confirmMessage}
         confirmLabel={confirmLabel}
-        cancelLabel="Cancelar"
-        onCancel={() => {
+        cancelLabel={cancelLabel}
+        onCancel={async () => {
           setConfirmOpen(false)
+          const fn = pendingCancelAction
           setPendingAction(null)
+          setPendingCancelAction(null)
+          if (typeof fn === "function") await fn()
         }}
         onConfirm={async () => {
           setConfirmOpen(false)
           const fn = pendingAction
           setPendingAction(null)
+          setPendingCancelAction(null)
           if (typeof fn === "function") await fn()
         }}
       />

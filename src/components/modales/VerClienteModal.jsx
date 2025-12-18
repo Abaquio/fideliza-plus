@@ -1,7 +1,17 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { X, User, Mail, Phone, IdCard, Shield, Calendar, Star } from "lucide-react"
+import {
+  X,
+  User,
+  Mail,
+  Phone,
+  IdCard,
+  Shield,
+  Calendar,
+  Star,
+  Database, // ✅ NUEVO
+} from "lucide-react"
 
 function formatWhen(ts) {
   if (!ts) return "-"
@@ -42,6 +52,16 @@ function safeText(v) {
   return s.length ? s : "-"
 }
 
+/** 🔹 Obtiene el nombre de la fuente sin romper nada */
+function getFuenteNombre(cliente) {
+  return (
+    cliente?.fuente_nombre ||
+    cliente?.fuente?.nombre ||
+    cliente?.fuente ||
+    "-"
+  )
+}
+
 export default function VerClienteModal({ open, cliente, onClose }) {
   const [c, setC] = useState(null)
 
@@ -50,8 +70,15 @@ export default function VerClienteModal({ open, cliente, onClose }) {
     setC(cliente || null)
   }, [open, cliente])
 
-  const tier = useMemo(() => computeTier(Number(c?.points || c?.puntos_total || 0)), [c])
-  const joined = useMemo(() => (c?.creado_en ? formatDate(c.creado_en) : c?.joined || "-"), [c])
+  const tier = useMemo(
+    () => computeTier(Number(c?.points || c?.puntos_total || 0)),
+    [c]
+  )
+
+  const joined = useMemo(
+    () => (c?.creado_en ? formatDate(c.creado_en) : c?.joined || "-"),
+    [c]
+  )
 
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) onClose?.()
@@ -64,18 +91,27 @@ export default function VerClienteModal({ open, cliente, onClose }) {
       className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
       onMouseDown={handleBackdropClick}
     >
-      {/* ✅ Modal tamaño L */}
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in">
+      {/* Modal tamaño L */}
+      <div
+        className="
+          bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in
+          max-h-[90vh] overflow-y-auto overscroll-contain
+        "
+        role="dialog"
+        aria-modal="true"
+      >
         {/* Header */}
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h2 className="text-2xl font-bold mb-1">Perfil del cliente</h2>
-            <p className="text-sm text-muted-foreground">Vista completa del perfil y métricas.</p>
+            <p className="text-sm text-muted-foreground">
+              Vista completa del perfil y métricas.
+            </p>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 hover:bg-muted rounded-lg transition-colors"
+            className="p-2 hover:bg-muted rounded-lg transition-colors shrink-0"
             title="Cerrar"
           >
             <X className="w-5 h-5" />
@@ -87,15 +123,21 @@ export default function VerClienteModal({ open, cliente, onClose }) {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center text-white text-xl font-bold">
-                {safeText(c?.name || c?.nombres)?.charAt(0) || "C"}
+                {safeText(c?.nombres)?.charAt(0) || "C"}
               </div>
               <div className="min-w-0">
                 <h3 className="font-bold text-lg truncate">
-                  {safeText(c?.name || `${c?.nombres || ""} ${c?.apellidos || ""}`.trim())}
+                  {safeText(
+                    `${c?.nombres || ""} ${c?.apellidos || ""}`.trim()
+                  )}
                 </h3>
 
                 <div className="flex flex-wrap items-center gap-2 mt-1">
-                  <span className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getTierColor(tier)}`}>
+                  <span
+                    className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getTierColor(
+                      tier
+                    )}`}
+                  >
                     {tier}
                   </span>
 
@@ -116,7 +158,7 @@ export default function VerClienteModal({ open, cliente, onClose }) {
               </div>
             </div>
 
-            {/* Métricas rápidas */}
+            {/* Métricas */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-card border border-border rounded-lg p-3">
                 <p className="text-xl font-bold text-primary">
@@ -125,7 +167,9 @@ export default function VerClienteModal({ open, cliente, onClose }) {
                 <p className="text-xs text-muted-foreground">Puntos</p>
               </div>
               <div className="bg-card border border-border rounded-lg p-3">
-                <p className="text-xl font-bold">{Number(c?.purchases || c?.compras_total || 0)}</p>
+                <p className="text-xl font-bold">
+                  {Number(c?.purchases || c?.compras_total || 0)}
+                </p>
                 <p className="text-xs text-muted-foreground">Compras</p>
               </div>
             </div>
@@ -149,10 +193,12 @@ export default function VerClienteModal({ open, cliente, onClose }) {
 
               <div className="flex items-start gap-3">
                 <User className="w-4 h-4 mt-0.5 text-muted-foreground" />
-                <div className="min-w-0">
+                <div>
                   <p className="text-xs text-muted-foreground">Nombre</p>
-                  <p className="text-sm font-medium truncate">
-                    {safeText(`${c?.nombres || ""} ${c?.apellidos || ""}`.trim() || c?.name)}
+                  <p className="text-sm font-medium">
+                    {safeText(
+                      `${c?.nombres || ""} ${c?.apellidos || ""}`.trim()
+                    )}
                   </p>
                 </div>
               </div>
@@ -161,7 +207,20 @@ export default function VerClienteModal({ open, cliente, onClose }) {
                 <Shield className="w-4 h-4 mt-0.5 text-muted-foreground" />
                 <div>
                   <p className="text-xs text-muted-foreground">Estado</p>
-                  <p className="text-sm font-medium">{c?.estado === "bloqueado" ? "Bloqueado" : "Activo"}</p>
+                  <p className="text-sm font-medium">
+                    {c?.estado === "bloqueado" ? "Bloqueado" : "Activo"}
+                  </p>
+                </div>
+              </div>
+
+              {/* ✅ NUEVO: Fuente */}
+              <div className="flex items-start gap-3">
+                <Database className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Fuente</p>
+                  <p className="text-sm font-medium">
+                    {safeText(getFuenteNombre(c))}
+                  </p>
                 </div>
               </div>
             </div>
@@ -176,7 +235,9 @@ export default function VerClienteModal({ open, cliente, onClose }) {
                 <Mail className="w-4 h-4 mt-0.5 text-muted-foreground" />
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Email</p>
-                  <p className="text-sm font-medium truncate">{safeText(c?.email)}</p>
+                  <p className="text-sm font-medium truncate">
+                    {safeText(c?.email)}
+                  </p>
                 </div>
               </div>
 
@@ -184,7 +245,9 @@ export default function VerClienteModal({ open, cliente, onClose }) {
                 <Phone className="w-4 h-4 mt-0.5 text-muted-foreground" />
                 <div>
                   <p className="text-xs text-muted-foreground">Teléfono</p>
-                  <p className="text-sm font-medium">{safeText(c?.telefono || c?.phone)}</p>
+                  <p className="text-sm font-medium">
+                    {safeText(c?.telefono)}
+                  </p>
                 </div>
               </div>
             </div>
@@ -207,17 +270,20 @@ export default function VerClienteModal({ open, cliente, onClose }) {
                 <Calendar className="w-4 h-4 mt-0.5 text-muted-foreground" />
                 <div>
                   <p className="text-xs text-muted-foreground">Creado en</p>
-                  <p className="text-sm font-medium">{c?.creado_en ? formatWhen(c.creado_en) : "-"}</p>
+                  <p className="text-sm font-medium">
+                    {c?.creado_en ? formatWhen(c.creado_en) : "-"}
+                  </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Placeholder: historial */}
+          {/* Actividad */}
           <div className="bg-muted/40 border border-border rounded-xl p-4">
             <p className="text-sm font-semibold mb-3">Actividad</p>
             <p className="text-sm text-muted-foreground">
-              Aquí podemos mostrar últimas compras, movimientos de puntos y cupones cuando conectemos esos endpoints.
+              Aquí podemos mostrar últimas compras, movimientos de puntos y
+              cupones cuando conectemos esos endpoints.
             </p>
           </div>
         </div>

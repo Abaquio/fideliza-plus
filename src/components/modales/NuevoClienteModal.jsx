@@ -48,7 +48,14 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
   }, [open])
 
   const canSubmit = useMemo(() => {
-    return form.rut.trim() && form.nombres.trim() && !fieldErrors.rut && !fieldErrors.nombres && !fieldErrors.email && !fieldErrors.telefono
+    return (
+      form.rut.trim() &&
+      form.nombres.trim() &&
+      !fieldErrors.rut &&
+      !fieldErrors.nombres &&
+      !fieldErrors.email &&
+      !fieldErrors.telefono
+    )
   }, [form, fieldErrors])
 
   if (!open) return null
@@ -234,7 +241,13 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
       className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
       onMouseDown={handleBackdropClick}
     >
-      <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full animate-scale-in">
+      {/* ✅ SOLO RESPONSIVE: max-h + scroll interno */}
+      <div
+        className="
+          bg-card border border-border rounded-xl p-6 max-w-md w-full animate-scale-in
+          max-h-[90vh] overflow-y-auto overscroll-contain
+        "
+      >
         <h2 className="text-2xl font-bold mb-4">Nuevo Cliente</h2>
 
         {submitError ? (
@@ -256,7 +269,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
               className={inputClass("rut")}
               placeholder="Ej: 11222333-4"
             />
-            {/* Mantengo tu texto + feedback */}
             <p className="mt-1 text-xs text-muted-foreground">Sin puntos. Con guión y dígito verificador.</p>
             {helper("rut")}
           </div>
