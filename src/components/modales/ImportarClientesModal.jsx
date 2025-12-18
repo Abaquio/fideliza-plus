@@ -37,7 +37,7 @@ export default function ImportarClientesModal({
   const [loadingSources, setLoadingSources] = useState(false)
   const [working, setWorking] = useState(false)
 
-  // ✅ Confirm UI
+  // Confirm
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState("Confirmar acción")
   const [confirmMessage, setConfirmMessage] = useState("¿Estás seguro de continuar?")
@@ -46,12 +46,10 @@ export default function ImportarClientesModal({
   const [pendingAction, setPendingAction] = useState(null)
   const [pendingCancelAction, setPendingCancelAction] = useState(null)
 
-  // ✅ Validado UI
+  // Validado
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoTitle, setValidadoTitle] = useState("Acción realizada")
-  const [validadoMessage, setValidadoMessage] = useState(
-    "Operación completada correctamente."
-  )
+  const [validadoMessage, setValidadoMessage] = useState("Operación completada correctamente.")
 
   const token = useMemo(() => getAuthToken(), [])
 
@@ -82,8 +80,7 @@ export default function ImportarClientesModal({
         },
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok)
-        throw new Error(data?.message || "No se pudieron cargar las fuentes")
+      if (!res.ok) throw new Error(data?.message || "No se pudieron cargar las fuentes")
       setSources(Array.isArray(data?.fuentes) ? data.fuentes : [])
     } catch (e) {
       setError(e.message || "Error cargando fuentes")
@@ -124,7 +121,6 @@ export default function ImportarClientesModal({
       },
       body: JSON.stringify({ estrategia_duplicados: estrategia }),
     })
-
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data?.message || "No se pudo importar con estrategia")
     return data
@@ -134,58 +130,42 @@ export default function ImportarClientesModal({
     openConfirm({
       title: "RUT repetidos detectados",
       message:
-        `Se encontraron ${duplicadosCantidad} cliente(s) con RUT que ya existe(n).\n\n` +
+        `Se encontraron ${duplicadosCantidad} cliente(s) con RUT que ya existe(n) fuera de esta fuente.\n\n` +
         `¿Quieres REEMPLAZAR esos registros con los datos de la fuente "${nombreFuente}"?\n\n` +
         `- Reemplazar: sobrescribe los existentes\n` +
-        `- No reemplazar: omite los repetidos y solo inserta nuevos`,
+        `- No reemplazar: mantiene los existentes y solo sincroniza los que son de esta fuente + nuevos`,
       label: "Reemplazar",
       cancelText: "No reemplazar",
       action: async () => {
-        // Reemplazar
         setWorking(true)
         setError("")
         try {
           const data = await recargarConEstrategia(fuenteId, "reemplazar")
           await fetchFuentes()
           onAfterChange?.()
-          if (data?.procesados || data?.validos || data?.invalidos) {
-            showValidado(
-              "Importación finalizada",
-              `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
-            )
-          } else if (data?.resumen) {
-            showValidado(
-              "Importación finalizada",
-              `Importación OK — Procesados: ${data.resumen.procesados}, Válidos: ${data.resumen.validos}, Inválidos: ${data.resumen.invalidos}`
-            )
-          } else {
-            showValidado("Importación finalizada", "Importación completada.")
-          }
+          showValidado(
+            "Importación finalizada",
+            `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
+          )
+        } catch (e) {
+          setError(e.message || "Error importando")
         } finally {
           setWorking(false)
         }
       },
       onCancelAction: async () => {
-        // No reemplazar (omitir duplicados)
         setWorking(true)
         setError("")
         try {
           const data = await recargarConEstrategia(fuenteId, "omitir")
           await fetchFuentes()
           onAfterChange?.()
-          if (data?.procesados || data?.validos || data?.invalidos) {
-            showValidado(
-              "Importación finalizada",
-              `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
-            )
-          } else if (data?.resumen) {
-            showValidado(
-              "Importación finalizada",
-              `Importación OK — Procesados: ${data.resumen.procesados}, Válidos: ${data.resumen.validos}, Inválidos: ${data.resumen.invalidos}`
-            )
-          } else {
-            showValidado("Importación finalizada", "Importación completada.")
-          }
+          showValidado(
+            "Importación finalizada",
+            `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
+          )
+        } catch (e) {
+          setError(e.message || "Error importando")
         } finally {
           setWorking(false)
         }
@@ -206,7 +186,6 @@ export default function ImportarClientesModal({
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        // ✅ Import inmediato (backend ahora lo soporta)
         body: JSON.stringify({ nombre: n, url: u, importar_ahora: true }),
       })
 
@@ -218,18 +197,15 @@ export default function ImportarClientesModal({
       await fetchFuentes()
       onAfterChange?.()
 
-      // ✅ Si detectó duplicados, preguntar reemplazar o no
       if (data?.requiere_confirmacion && data?.fuente?.id) {
-        const cantidad = data?.duplicados?.cantidad || 0
         preguntarDuplicados({
           fuenteId: data.fuente.id,
           nombreFuente: data.fuente.nombre || "Fuente",
-          duplicadosCantidad: cantidad,
+          duplicadosCantidad: data?.duplicados?.cantidad || 0,
         })
         return
       }
 
-      // ✅ validado normal
       if (data?.resumen) {
         showValidado(
           "Fuente ingresada",
@@ -251,8 +227,7 @@ export default function ImportarClientesModal({
 
     if (!n) return setError("Debes ingresar un nombre para la fuente")
     if (!u) return setError("Debes ingresar un enlace")
-    if (!isValidGoogleUrl(u))
-      return setError("El enlace debe ser de Google Drive/Sheets")
+    if (!isValidGoogleUrl(u)) return setError("El enlace debe ser de Google Drive/Sheets")
 
     openConfirm({
       title: "Confirmar ingreso de fuente",
@@ -279,13 +254,11 @@ export default function ImportarClientesModal({
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || "No se pudo recargar la fuente")
 
-      // ✅ Si hay duplicados, pedir opción
       if (data?.requiere_confirmacion) {
-        const cantidad = data?.duplicados?.cantidad || 0
         preguntarDuplicados({
           fuenteId: source.id,
           nombreFuente: source.nombre || "Fuente",
-          duplicadosCantidad: cantidad,
+          duplicadosCantidad: data?.duplicados?.cantidad || 0,
         })
         return
       }
@@ -293,22 +266,10 @@ export default function ImportarClientesModal({
       await fetchFuentes()
       onAfterChange?.()
 
-      if (data?.resumen) {
-        showValidado(
-          "Fuente recargada",
-          `Importación OK — Procesados: ${data.resumen.procesados}, Válidos: ${data.resumen.validos}, Inválidos: ${data.resumen.invalidos}`
-        )
-      } else {
-        // por si backend responde directo en root
-        if (data?.procesados || data?.validos || data?.invalidos) {
-          showValidado(
-            "Fuente recargada",
-            `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
-          )
-        } else {
-          showValidado("Fuente recargada", "La fuente se recargó correctamente.")
-        }
-      }
+      showValidado(
+        "Fuente recargada",
+        `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
+      )
     } catch (e) {
       setError(e.message || "Error recargando fuente")
     } finally {
@@ -332,7 +293,6 @@ export default function ImportarClientesModal({
 
       await fetchFuentes()
       onAfterChange?.()
-
       showValidado("Fuente eliminada", `Se eliminó "${source.nombre}" correctamente.`)
     } catch (e) {
       setError(e.message || "Error eliminando fuente")
@@ -353,7 +313,6 @@ export default function ImportarClientesModal({
   }
 
   if (!open) return null
-
   const disabled = isImporting || working
 
   return (

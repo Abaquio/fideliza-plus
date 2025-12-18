@@ -14,6 +14,7 @@ import EditarClienteModal from "../components/modales/EditarClienteModal"
 import ValidadoCard from "../ui/validado"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
+const PAGE_SIZE = 6
 
 function getAuthToken() {
   return localStorage.getItem("token") || localStorage.getItem("authToken") || ""
@@ -37,6 +38,26 @@ function computeTier(points) {
   return "Bronce"
 }
 
+function buildPagination(currentPage, totalPages) {
+  // Devuelve array de números y "..." para render
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1)
+  }
+
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1])
+  const list = Array.from(pages)
+    .filter((p) => p >= 1 && p <= totalPages)
+    .sort((a, b) => a - b)
+
+  const out = []
+  for (let i = 0; i < list.length; i++) {
+    out.push(list[i])
+    const next = list[i + 1]
+    if (next && next - list[i] > 1) out.push("...")
+  }
+  return out
+}
+
 export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -54,6 +75,9 @@ export default function Clientes() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
+
+  // ✅ Paginación
+  const [currentPage, setCurrentPage] = useState(1)
 
   // ✅ Validado (para crear cliente)
   const [validadoOpen, setValidadoOpen] = useState(false)
@@ -137,6 +161,16 @@ export default function Clientes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm])
 
+  // ✅ Reset a página 1 cuando cambia la búsqueda
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm])
+
+  // ✅ Reset a página 1 cuando llega data nueva (evita quedar en página inválida)
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [clientes.length])
+
   async function handleCreateCliente(payload) {
     setSaving(true)
     setErrorMsg("")
@@ -158,7 +192,6 @@ export default function Clientes() {
       setShowModal(false)
       await fetchClientes(searchTerm)
 
-      // ✅ Validado al terminar crear (sin cambiar diseño)
       const nombre = `${payload?.nombres || ""} ${payload?.apellidos || ""}`.trim()
       showValidado(
         "Cliente creado",
@@ -171,7 +204,6 @@ export default function Clientes() {
     }
   }
 
-  // ✅ Guardar cambios desde EditarClienteModal (PATCH)
   async function handleUpdateCliente(payload) {
     setSaving(true)
     setErrorMsg("")
@@ -194,13 +226,11 @@ export default function Clientes() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || "No se pudo actualizar el cliente")
 
-      // cerrar modal y refrescar
       setShowEditModal(false)
       setSelectedCliente(null)
       await fetchClientes(searchTerm)
     } catch (e) {
       setErrorMsg(e.message || "Error actualizando cliente")
-      // dejamos el modal abierto, para que el usuario no pierda lo editado
       throw e
     } finally {
       setSaving(false)
@@ -220,6 +250,22 @@ export default function Clientes() {
     setSelectedCliente(cliente)
     setShowEditModal(true)
   }
+
+  // ✅ Paginación calculada (solo cambia el listado, NO el diseño de cards)
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil((clientes?.length || 0) / PAGE_SIZE))
+  }, [clientes])
+
+  const safePage = useMemo(() => {
+    return Math.min(Math.max(currentPage, 1), totalPages)
+  }, [currentPage, totalPages])
+
+  const paginatedClientes = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE
+    return clientes.slice(start, start + PAGE_SIZE)
+  }, [clientes, safePage])
+
+  const pageItems = useMemo(() => buildPagination(safePage, totalPages), [safePage, totalPages])
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -291,7 +337,7 @@ export default function Clientes() {
 
       {/* Clientes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {clientes.map((cliente, index) => (
+        {paginatedClientes.map((cliente, index) => (
           <div
             key={cliente.id}
             className="bg-card border border-border rounded-xl p-6 hover-lift animate-scale-in"
@@ -365,6 +411,47 @@ export default function Clientes() {
         ))}
       </div>
 
+      {/* ✅ Paginación (misma estética, solo botones) */}
+      {clientes.length > PAGE_SIZE ? (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            className="px-3 py-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors border border-border disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ←
+          </button>
+
+          {pageItems.map((it, idx) =>
+            it === "..." ? (
+              <span key={`dots-${idx}`} className="px-2 text-muted-foreground select-none">
+                ...
+              </span>
+            ) : (
+              <button
+                key={`p-${it}`}
+                onClick={() => setCurrentPage(it)}
+                className={
+                  it === safePage
+                    ? "px-3 py-2 bg-primary text-primary-foreground rounded-lg transition-colors border border-primary/30"
+                    : "px-3 py-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors border border-border"
+                }
+              >
+                {it}
+              </button>
+            )
+          )}
+
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage === totalPages}
+            className="px-3 py-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors border border-border disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            →
+          </button>
+        </div>
+      ) : null}
+
       {/* Modales existentes */}
       <NuevoClienteModal
         open={showModal}
@@ -402,7 +489,7 @@ export default function Clientes() {
         isSaving={saving}
       />
 
-      {/* ✅ Validado global (solo para crear cliente acá) */}
+      {/* ✅ Validado global */}
       <ValidadoCard
         open={validadoOpen}
         title={validadoTitle}

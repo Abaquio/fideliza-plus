@@ -23,7 +23,7 @@ function mapClienteRow(row) {
 }
 
 // ------------------------
-// Helpers (solo backend)
+// Helpers Drive/Sheets
 // ------------------------
 function extractDriveFileId(url = "") {
   const m1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
@@ -38,12 +38,6 @@ function extractDriveFileId(url = "") {
   return null
 }
 
-/**
- * Soporta:
- * - Google Sheets: https://docs.google.com/spreadsheets/d/<ID>/edit...
- * - Drive file:   https://drive.google.com/file/d/<ID>/view...
- * - Drive uc:     https://drive.google.com/uc?export=download&id=<ID>
- */
 function toDirectDriveDownload(url) {
   if (!url) return null
 
@@ -270,11 +264,8 @@ export async function actualizarCliente(req, res, next) {
 }
 
 // ------------------------
-// Importar (endpoint actual)
-// POST /api/clientes/importar
-// body: { drive_url } o { fuente_id } o ambos
-// + estrategia_duplicados: "reemplazar" | "omitir"
-// -----------------------
+// Importar clientes (genérico)
+// ------------------------
 export async function importarClientes(req, res, next) {
   try {
     const { drive_url, fuente_id, estrategia_duplicados } = req.body || {}
@@ -298,30 +289,16 @@ export async function importarClientes(req, res, next) {
       driveUrlFinal = fuente?.url
     }
 
-    if (driveUrlFinal && !fuenteIdFinal) {
-      const { data: fuenteNueva, error: fuenteNuevaErr } = await supabaseAdmin
-        .from("fuentes_clientes")
-        .insert({
-          nombre: "Fuente Google Sheets",
-          url: driveUrlFinal,
-          tipo: driveUrlFinal.includes("spreadsheets") ? "google_sheets" : "drive_file",
-          activo: true,
-        })
-        .select("id")
-        .single()
-
-      if (fuenteNuevaErr) throw fuenteNuevaErr
-      fuenteIdFinal = fuenteNueva.id
+    if (!driveUrlFinal) {
+      return res.status(400).json({ ok: false, message: "No se pudo resolver la URL" })
     }
 
     const resumen = await importarClientesDesdeUrl(driveUrlFinal, fuenteIdFinal, { estrategia })
 
-    // Si requiere confirmación, NO escribir nada aún
     if (resumen?.requiere_confirmacion) {
       return res.json({ ok: true, fuente_id: fuenteIdFinal, ...resumen })
     }
 
-    // Mantengo respuesta ok
     res.json({ ok: true, ...resumen })
   } catch (err) {
     next(err)
@@ -371,7 +348,6 @@ export async function crearFuenteClientes(req, res, next) {
 
     if (error) throw error
 
-    // ✅ Si no se pidió importar, mantenemos el comportamiento original
     if (!importar_ahora) {
       return res.status(201).json({ ok: true, fuente })
     }
@@ -379,17 +355,16 @@ export async function crearFuenteClientes(req, res, next) {
     const estrategia = normalizeEstrategia(estrategia_duplicados)
     const resumen = await importarClientesDesdeUrl(fuente.url, fuente.id, { estrategia })
 
-    // Si requiere confirmación, no importamos todavía
+    // Si hay conflictos con manual/otra fuente => pedir confirmación
     if (resumen?.requiere_confirmacion) {
       return res.status(201).json({
         ok: true,
         fuente,
         requiere_confirmacion: true,
-        duplicados: resumen.duplicados,
+        duplicados: resumen.duplicados, // acá "duplicados" = conflictos
       })
     }
 
-    // Guardar resumen como recarga
     await supabaseAdmin
       .from("fuentes_clientes")
       .update({
@@ -400,6 +375,48 @@ export async function crearFuenteClientes(req, res, next) {
       .eq("id", fuente.id)
 
     return res.status(201).json({ ok: true, fuente, resumen })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function recargarFuenteClientes(req, res, next) {
+  try {
+    const { id } = req.params
+    const { estrategia_duplicados } = req.body || {}
+    const estrategia = normalizeEstrategia(estrategia_duplicados)
+
+    const { data: fuente, error: fuenteErr } = await supabaseAdmin
+      .from("fuentes_clientes")
+      .select("id, url, nombre")
+      .eq("id", id)
+      .single()
+    if (fuenteErr) throw fuenteErr
+
+    const resumen = await importarClientesDesdeUrl(fuente.url, fuente.id, { estrategia })
+
+    // Solo pedimos confirmación si hay CONFLICTOS (manual/otra fuente)
+    if (resumen?.requiere_confirmacion) {
+      return res.json({
+        ok: true,
+        fuente_id: id,
+        requiere_confirmacion: true,
+        duplicados: resumen.duplicados, // conflictos
+      })
+    }
+
+    const { error: upErr } = await supabaseAdmin
+      .from("fuentes_clientes")
+      .update({
+        ultima_recarga_en: new Date().toISOString(),
+        ultima_recarga_resumen: resumen,
+        actualizado_en: new Date().toISOString(),
+      })
+      .eq("id", id)
+
+    if (upErr) throw upErr
+
+    res.json({ ok: true, fuente_id: id, ...resumen })
   } catch (err) {
     next(err)
   }
@@ -428,56 +445,6 @@ export async function actualizarFuenteClientes(req, res, next) {
     if (error) throw error
     res.json({ ok: true, fuente: data })
   } catch (err) {
-    next(err)
-  }
-}
-
-export async function recargarFuenteClientes(req, res, next) {
-  try {
-    const { id } = req.params
-    const { estrategia_duplicados } = req.body || {}
-    const estrategia = normalizeEstrategia(estrategia_duplicados)
-
-    const { data: fuente, error: fuenteErr } = await supabaseAdmin
-      .from("fuentes_clientes")
-      .select("id, url")
-      .eq("id", id)
-      .single()
-    if (fuenteErr) throw fuenteErr
-
-    const resumen = await importarClientesDesdeUrl(fuente.url, fuente.id, { estrategia })
-
-    // Si requiere confirmación, NO se actualiza nada aún
-    if (resumen?.requiere_confirmacion) {
-      return res.json({
-        ok: true,
-        fuente_id: id,
-        requiere_confirmacion: true,
-        duplicados: resumen.duplicados,
-      })
-    }
-
-    // Guardar resumen en la fuente
-    const { error: upErr } = await supabaseAdmin
-      .from("fuentes_clientes")
-      .update({
-        ultima_recarga_en: new Date().toISOString(),
-        ultima_recarga_resumen: resumen,
-        actualizado_en: new Date().toISOString(),
-      })
-      .eq("id", id)
-
-    if (upErr) throw upErr
-
-    res.json({ ok: true, fuente_id: id, ...resumen })
-  } catch (err) {
-    if (err?.payload) {
-      return res.status(err.statusCode || 400).json({
-        ok: false,
-        message: err.message || "Error recargando",
-        ...err.payload,
-      })
-    }
     next(err)
   }
 }
@@ -511,7 +478,7 @@ export async function eliminarFuenteClientes(req, res, next) {
 }
 
 // ------------------------
-// Import internals (con control de duplicados)
+// Import interno con “conflictos por fuente”
 // ------------------------
 async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}) {
   const buffer = await fetchXlsxFromDrive(driveUrl)
@@ -543,76 +510,95 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
     }
   }
 
-  const validWithFuente = validBase.map((v) => ({ ...v, fuente_id }))
+  const incoming = validBase.map((v) => ({ ...v, fuente_id }))
 
-  // ✅ Detectar duplicados por RUT antes de escribir
-  const ruts = Array.from(new Set(validWithFuente.map((v) => v.rut))).filter(Boolean)
+  const ruts = Array.from(new Set(incoming.map((v) => v.rut))).filter(Boolean)
 
-  let duplicados = []
+  // 1) Traer existentes con su fuente_id
+  const existentesMap = new Map()
   if (ruts.length > 0) {
-    // Evitar URL demasiado grande: en caso de ser enorme, podrías paginar,
-    // pero para beta y 100-500 ruts suele andar bien.
     const { data: existentes, error: exErr } = await supabaseAdmin
       .from("clientes")
-      .select("rut")
+      .select("rut, fuente_id")
       .in("rut", ruts)
 
     if (exErr) throw exErr
-    duplicados = (existentes || []).map((x) => x.rut)
+    for (const e of existentes || []) {
+      existentesMap.set(e.rut, e.fuente_id ?? null)
+    }
   }
 
-  const dupCount = duplicados.length
+  // 2) Clasificar
+  const ownRuts = new Set()        // ya eran de ESTA fuente -> se actualizan sin preguntar
+  const conflictRuts = new Set()   // manual (null) o de OTRA fuente -> preguntar
+  const newRuts = new Set()        // no existían -> insertar
 
-  // Si hay duplicados y no viene estrategia => pedir confirmación (sin romper nada)
-  if (dupCount > 0 && !estrategia) {
+  for (const rut of ruts) {
+    if (!existentesMap.has(rut)) {
+      newRuts.add(rut)
+      continue
+    }
+    const fuenteExistente = existentesMap.get(rut) // null o uuid
+    if (fuenteExistente === fuente_id) {
+      ownRuts.add(rut)
+    } else {
+      conflictRuts.add(rut)
+    }
+  }
+
+  const conflictsCount = conflictRuts.size
+
+  // 3) Si hay conflictos y NO viene estrategia => pedir confirmación
+  if (conflictsCount > 0 && !estrategia) {
     return {
       requiere_confirmacion: true,
       duplicados: {
-        cantidad: dupCount,
-        ruts_ejemplo: duplicados.slice(0, 20),
+        // OJO: acá duplicados = conflictos (manual/otra fuente)
+        cantidad: conflictsCount,
+        ruts_ejemplo: Array.from(conflictRuts).slice(0, 20),
       },
       procesados: totalProcesados,
-      validos: validWithFuente.length,
+      validos: incoming.length,
       invalidos: invalidos.length,
       invalidos_detalle: invalidos.slice(0, 20),
     }
   }
 
-  // ✅ Aplicar estrategia
-  if (estrategia === "omitir" && dupCount > 0) {
-    const setDup = new Set(duplicados)
-    const soloNuevos = validWithFuente.filter((v) => !setDup.has(v.rut))
+  // 4) Ejecutar estrategia:
+  // - reemplazar: upsert todo (incluye actualizar los de la misma fuente + sobrescribir conflictos)
+  // - omitir: NO tocar conflictos; pero SÍ actualizar los de la misma fuente y agregar nuevos
+  if (estrategia === "omitir" && conflictsCount > 0) {
+    const allowedRuts = new Set([...ownRuts, ...newRuts])
+    const payload = incoming.filter((v) => allowedRuts.has(v.rut))
 
-    // Insertar sin pisar los existentes
-    const { error } = await supabaseAdmin
-      .from("clientes")
-      .upsert(soloNuevos, { onConflict: "rut", ignoreDuplicates: true })
-
+    // upsert: actualiza los propios + inserta nuevos
+    const { error } = await supabaseAdmin.from("clientes").upsert(payload, { onConflict: "rut" })
     if (error) throw error
 
     return {
       procesados: totalProcesados,
-      validos: validWithFuente.length,
+      validos: incoming.length,
       invalidos: invalidos.length,
-      insertados: soloNuevos.length,
-      actualizados: 0,
-      omitidos_por_duplicado: dupCount,
-      duplicados_detectados: dupCount,
+      insertados: newRuts.size,
+      actualizados: ownRuts.size,
+      omitidos_por_conflicto: conflictsCount,
+      conflictos_detectados: conflictsCount,
       invalidos_detalle: invalidos.slice(0, 20),
     }
   }
 
-  // reemplazar (o no hay duplicados)
-  const { error } = await supabaseAdmin.from("clientes").upsert(validWithFuente, { onConflict: "rut" })
+  // reemplazar o no hay conflictos
+  const { error } = await supabaseAdmin.from("clientes").upsert(incoming, { onConflict: "rut" })
   if (error) throw error
 
+  // Conteos informativos (conflictos reemplazados = conflictsCount)
   return {
     procesados: totalProcesados,
-    validos: validWithFuente.length,
+    validos: incoming.length,
     invalidos: invalidos.length,
-    insertados: Math.max(validWithFuente.length - dupCount, 0),
-    actualizados: dupCount,
-    duplicados_detectados: dupCount,
+    insertados: newRuts.size,
+    actualizados: ownRuts.size + conflictsCount,
+    conflictos_reemplazados: conflictsCount,
     invalidos_detalle: invalidos.slice(0, 20),
   }
 }
