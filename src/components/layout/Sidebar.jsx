@@ -1,15 +1,16 @@
 "use client"
 
 import { LayoutDashboard, Users, ShoppingCart, Tag, UserCog, Settings, X } from "lucide-react"
+import { NavLink } from "react-router-dom"
 
 export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }) {
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "clientes", label: "Clientes", icon: Users },
-    { id: "compras", label: "Compras / Movimientos", icon: ShoppingCart },
-    { id: "descuentos", label: "Descuentos", icon: Tag },
-    { id: "staff", label: "Staff", icon: UserCog },
-    { id: "configuracion", label: "Configuración", icon: Settings },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
+    { id: "clientes", label: "Clientes", icon: Users, to: "/clientes" },
+    { id: "compras", label: "Compras / Movimientos", icon: ShoppingCart, to: "/compras" },
+    { id: "descuentos", label: "Descuentos", icon: Tag, to: "/descuentos" },
+    { id: "staff", label: "Staff", icon: UserCog, to: "/staff" },
+    { id: "configuracion", label: "Configuración", icon: Settings, to: "/configuracion" },
   ]
 
   return (
@@ -25,7 +26,7 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen
       {/* Sidebar */}
       <aside
         className={`
-          fixed lg:static inset-y-0 left-0 z-50 
+          fixed lg:relative inset-y-0 left-0 z-50 
           w-64 bg-card border-r border-border 
           transform transition-transform duration-300 ease-in-out
           ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
@@ -50,30 +51,32 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map((item, index) => {
             const Icon = item.icon
-            const isActive = currentView === item.id
-
             return (
-              <button
+              <NavLink
                 key={item.id}
+                to={item.to}
                 onClick={() => {
                   setCurrentView(item.id)
                   setIsOpen(false)
                 }}
-                className={`
-                  w-full flex items-center gap-3 px-4 py-3 rounded-lg 
-                  transition-smooth text-left
-                  animate-fade-in
-                  ${
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                      : "hover:bg-muted text-foreground"
-                  }
-                `}
+                className={({ isActive }) => {
+                  const active = isActive || currentView === item.id
+                  return `
+                    w-full flex items-center gap-3 px-4 py-3 rounded-lg 
+                    transition-smooth text-left
+                    animate-fade-in
+                    ${
+                      active
+                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                        : "hover:bg-muted text-foreground"
+                    }
+                  `
+                }}
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
                 <span className="font-medium">{item.label}</span>
-              </button>
+              </NavLink>
             )
           })}
         </nav>

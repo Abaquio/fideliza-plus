@@ -6,7 +6,7 @@ import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 import authRoutes from "./routes/auth.routes.js";
-import clientesRoutes from "./routes/clientes.routes.js"
+import clientesRoutes from "./routes/clientes.routes.js";
 
 export const app = express();
 
@@ -19,7 +19,11 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, service: "Fideliza+ Backend" });
 });
 
+// ✅ Mantiene tu estructura actual
 app.use("/api/auth", authRoutes);
-app.use("/api/clientes", clientesRoutes)
+app.use("/api/clientes", clientesRoutes);
+
+// ✅ Compatibilidad: si el front pega a /auth/login, también funciona (no rompe nada)
+app.use("/auth", authRoutes);
 
 app.use(errorHandler);
