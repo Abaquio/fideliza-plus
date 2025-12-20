@@ -1,6 +1,18 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+const defaultLocal = "http://localhost:5173";
+
+// Permite:
+// - CORS_ORIGIN="http://localhost:5173"
+// - CORS_ORIGINS="http://localhost:5173,https://tuapp.vercel.app"
+const corsOriginsRaw = process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || defaultLocal;
+
+const CORS_ORIGINS = corsOriginsRaw
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 export const env = {
   PORT: process.env.PORT || 4000,
   NODE_ENV: process.env.NODE_ENV || "development",
@@ -11,7 +23,8 @@ export const env = {
   // ✅ opcional por ahora (cuando activemos login real, la agregas)
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || null,
 
-  CORS_ORIGIN: process.env.CORS_ORIGIN || "http://localhost:5173",
+  // ✅ lista normalizada (sirve para cors dinámico)
+  CORS_ORIGINS,
 };
 
 // ✅ Solo exigimos lo que hoy tu backend realmente usa sí o sí
@@ -24,5 +37,7 @@ required.forEach((key) => {
 
 // Aviso amigable (no rompe)
 if (!env.SUPABASE_ANON_KEY) {
-  console.warn("⚠️ SUPABASE_ANON_KEY no está configurada (login Supabase aún no habilitado).");
+  console.warn(
+    "⚠️ SUPABASE_ANON_KEY no está configurada (login Supabase aún no habilitado)."
+  );
 }
