@@ -6,11 +6,20 @@ import logoLogin from "../assets/logo-login.jpg"
 export default function Login() {
   const navigate = useNavigate()
 
-  // ✅ Soporta VITE_API_URL con o sin "/api"
-  // - Si viene con /api, no duplica
-  // - Si viene sin /api, lo agrega
+  /**
+   * API_BASE blindado:
+   * - Dev  → localhost
+   * - Prod → Render (aunque Vercel no inyecte env)
+   * - Soporta VITE_API_URL con o sin /api
+   */
   const API_BASE = useMemo(() => {
-    const raw = (import.meta?.env?.VITE_API_URL || "http://localhost:4000").replace(/\/$/, "")
+    const isProd = import.meta.env.MODE === "production"
+
+    const fallback = isProd
+      ? "https://fideliza-plus.onrender.com"
+      : "http://localhost:4000"
+
+    const raw = (import.meta?.env?.VITE_API_URL || fallback).replace(/\/$/, "")
     return raw.endsWith("/api") ? raw : `${raw}/api`
   }, [])
 
@@ -42,7 +51,7 @@ export default function Login() {
       localStorage.setItem("token", data.token)
       localStorage.setItem("user", JSON.stringify(data.user || {}))
 
-      // ✅ avisa al App.jsx (misma pestaña) que cambió auth
+      // avisa al App.jsx que cambió la sesión
       window.dispatchEvent(new Event("auth-changed"))
 
       navigate("/dashboard", { replace: true })
@@ -110,7 +119,8 @@ export default function Login() {
   )
 }
 
-/* layout */
+/* ===== LAYOUT (SIN CAMBIOS) ===== */
+
 const PageWrapper = styled.div`
   min-height: 100vh;
   display: grid;
@@ -146,7 +156,8 @@ const LoginSide = styled.div`
   background: #1f293a;
 `
 
-/* tu diseño intacto */
+/* ===== DISEÑO ORIGINAL INTACTO ===== */
+
 const StyledWrapper = styled.div`
   background: transparent;
   display: flex;
@@ -179,12 +190,8 @@ const StyledWrapper = styled.div`
   }
 
   @keyframes blink {
-    0% {
-      background: #0ef;
-    }
-    25% {
-      background: #2c4766;
-    }
+    0% { background: #0ef; }
+    25% { background: #2c4766; }
   }
 
   .login-box {
