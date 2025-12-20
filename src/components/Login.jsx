@@ -6,8 +6,12 @@ import logoLogin from "../assets/logo-login.jpg"
 export default function Login() {
   const navigate = useNavigate()
 
-  const API_URL = useMemo(() => {
-    return (import.meta?.env?.VITE_API_URL || "http://localhost:4000").replace(/\/$/, "")
+  // ✅ Soporta VITE_API_URL con o sin "/api"
+  // - Si viene con /api, no duplica
+  // - Si viene sin /api, lo agrega
+  const API_BASE = useMemo(() => {
+    const raw = (import.meta?.env?.VITE_API_URL || "http://localhost:4000").replace(/\/$/, "")
+    return raw.endsWith("/api") ? raw : `${raw}/api`
   }, [])
 
   const [email, setEmail] = useState("")
@@ -21,7 +25,7 @@ export default function Login() {
     setLoading(true)
 
     try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -38,7 +42,7 @@ export default function Login() {
       localStorage.setItem("token", data.token)
       localStorage.setItem("user", JSON.stringify(data.user || {}))
 
-      // ✅ MUY IMPORTANTE: avisa al App.jsx (misma pestaña) que cambió auth
+      // ✅ avisa al App.jsx (misma pestaña) que cambió auth
       window.dispatchEvent(new Event("auth-changed"))
 
       navigate("/dashboard", { replace: true })
