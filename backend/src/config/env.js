@@ -6,12 +6,22 @@ const defaultLocal = "http://localhost:5173";
 // Permite:
 // - CORS_ORIGIN="http://localhost:5173"
 // - CORS_ORIGINS="http://localhost:5173,https://tuapp.vercel.app"
-const corsOriginsRaw = process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || defaultLocal;
+const corsOriginsRaw =
+  process.env.CORS_ORIGINS ||
+  process.env.CORS_ORIGIN ||
+  defaultLocal;
+
+// Normaliza: trim + quita "/" final
+const normalizeOrigin = (o) => o.replace(/\/$/, "").trim();
 
 const CORS_ORIGINS = corsOriginsRaw
   .split(",")
-  .map((s) => s.trim())
+  .map((s) => normalizeOrigin(s))
   .filter(Boolean);
+
+// (Opcional) permitir previews de Vercel (*.vercel.app)
+const ALLOW_VERCEL_PREVIEWS =
+  (process.env.CORS_ALLOW_VERCEL_PREVIEWS || "false").toLowerCase() === "true";
 
 export const env = {
   PORT: process.env.PORT || 4000,
@@ -20,14 +30,14 @@ export const env = {
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_SERVICE_ROLE: process.env.SUPABASE_SERVICE_ROLE,
 
-  // ✅ opcional por ahora (cuando activemos login real, la agregas)
+  // opcional (login Supabase más adelante)
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || null,
 
-  // ✅ lista normalizada (sirve para cors dinámico)
   CORS_ORIGINS,
+  ALLOW_VERCEL_PREVIEWS,
 };
 
-// ✅ Solo exigimos lo que hoy tu backend realmente usa sí o sí
+// ✅ Solo lo estrictamente obligatorio (no rompe local)
 const required = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE"];
 required.forEach((key) => {
   if (!env[key]) {
@@ -35,9 +45,9 @@ required.forEach((key) => {
   }
 });
 
-// Aviso amigable (no rompe)
+// Aviso, no error
 if (!env.SUPABASE_ANON_KEY) {
   console.warn(
-    "⚠️ SUPABASE_ANON_KEY no está configurada (login Supabase aún no habilitado)."
+    "⚠️ SUPABASE_ANON_KEY no configurada (login Supabase aún no habilitado)."
   );
 }
