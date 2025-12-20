@@ -2,5 +2,7 @@ import { app } from "./app.js";
 import { env } from "./config/env.js";
 
 app.listen(env.PORT, () => {
-  console.log(`🚀 Backend Fideliza+ escuchando en puerto ${env.PORT}`);
+  console.log(
+    `🚀 Backend Fideliza+ escuchando en puerto ${env.PORT} (${env.NODE_ENV})`
+  );
 });
