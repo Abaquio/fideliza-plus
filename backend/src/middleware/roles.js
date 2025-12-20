@@ -1,7 +1,10 @@
-export function requireRoles(...roles) {
+export function requireRoles(...rolesPermitidos) {
   return (req, res, next) => {
-    if (!roles.includes(req.user?.rol)) {
-      return res.status(403).json({ ok: false, message: "Sin permisos" });
+    if (!req.user || !rolesPermitidos.includes(req.user.rol)) {
+      return res.status(403).json({
+        ok: false,
+        message: "Sin permisos para esta acción",
+      });
     }
     next();
   };
