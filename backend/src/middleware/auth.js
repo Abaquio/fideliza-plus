@@ -34,6 +34,7 @@ export async function auth(req, res, next) {
         .select("nombre")
         .eq("id", perfil.rol_id)
         .maybeSingle();
+
       rolNombre = rolRow?.nombre ?? null;
     }
 
@@ -43,7 +44,7 @@ export async function auth(req, res, next) {
       nombre: perfil?.nombre ?? null,
       rol: rolNombre,
       sucursal_id: perfil?.sucursal_id ?? null,
-      perfil_id: perfil?.id ?? null
+      perfil_id: perfil?.id ?? null,
     };
 
     return next();
@@ -51,3 +52,6 @@ export async function auth(req, res, next) {
     return res.status(401).json({ ok: false, message: "Token inválido" });
   }
 }
+
+// ✅ Alias para que puedas importarlo como authMiddleware sin romper nada
+export const authMiddleware = auth;

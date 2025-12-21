@@ -12,6 +12,7 @@ import Compras from "./components/Compras"
 import Descuentos from "./components/Descuentos"
 import Staff from "./components/Staff"
 import PerfilFull from "./components/PerfilFull"
+import Configuracion from "./components/Configuracion"
 import Login from "./components/Login"
 
 const PATH_TO_VIEW = {
@@ -20,7 +21,8 @@ const PATH_TO_VIEW = {
   "/compras": "compras",
   "/descuentos": "descuentos",
   "/staff": "staff",
-  "/perfil": "dashboard",
+  "/configuracion": "configuracion",
+  "/perfil": "perfil",
 }
 
 function readSession() {
@@ -121,6 +123,7 @@ export default function App() {
         <Route path="/compras" element={requireAuth(wrapLayout(<Compras />))} />
         <Route path="/descuentos" element={requireAuth(wrapLayout(<Descuentos />))} />
         <Route path="/staff" element={requireAuth(wrapLayout(<Staff />))} />
+        <Route path="/configuracion" element={requireAuth(wrapLayout(<Configuracion />))} />
         <Route path="/perfil" element={requireAuth(wrapLayout(<PerfilFull />))} />
 
         <Route path="*" element={<Navigate to={isAuthed ? "/dashboard" : "/login"} replace />} />

@@ -1,58 +1,55 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Plus, Shield, Mail, Phone, Calendar } from "lucide-react"
 import CrearStaffModal from "./modales/CrearStaffModal"
 
+function getApiBase() {
+  const host = window.location.hostname
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
+  return "https://fideliza-plus.onrender.com"
+}
+
+async function safeJsonFetch(url, options) {
+  const res = await fetch(url, options)
+  const ct = res.headers.get("content-type") || ""
+
+  if (!ct.includes("application/json")) {
+    const text = await res.text()
+    throw new Error(
+      `Respuesta no-JSON (${res.status}) en ${url}. Primeros chars: ${text.slice(0, 80)}`
+    )
+  }
+
+  const data = await res.json()
+  return { res, data }
+}
+
 export default function Staff() {
   const [showModal, setShowModal] = useState(false)
+  const [editingMember, setEditingMember] = useState(null)
+  const [staff, setStaff] = useState([])
 
-  const staff = [
-    {
-      id: 1,
-      name: "Roberto García",
-      email: "roberto@fidelizaplus.com",
-      phone: "+34 611 222 333",
-      role: "Administrador",
-      permissions: ["all"],
-      joinedAt: "10/01/2024",
-      lastActive: "Hace 5 min",
-      status: "active",
-    },
-    {
-      id: 2,
-      name: "Isabel Fernández",
-      email: "isabel@fidelizaplus.com",
-      phone: "+34 622 333 444",
-      role: "Gerente",
-      permissions: ["clientes", "compras", "descuentos"],
-      joinedAt: "15/02/2024",
-      lastActive: "Hace 1 hora",
-      status: "active",
-    },
-    {
-      id: 3,
-      name: "Miguel Santos",
-      email: "miguel@fidelizaplus.com",
-      phone: "+34 633 444 555",
-      role: "Vendedor",
-      permissions: ["compras"],
-      joinedAt: "01/03/2024",
-      lastActive: "Hace 3 horas",
-      status: "active",
-    },
-    {
-      id: 4,
-      name: "Carmen López",
-      email: "carmen@fidelizaplus.com",
-      phone: "+34 644 555 666",
-      role: "Vendedor",
-      permissions: ["compras"],
-      joinedAt: "20/03/2024",
-      lastActive: "Hace 2 días",
-      status: "inactive",
-    },
-  ]
+  const fetchStaff = async () => {
+    try {
+      const API = getApiBase()
+      const token = localStorage.getItem("token")
+
+      const url = `${API}/api/staff`
+
+      const { data } = await safeJsonFetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (data.ok) setStaff(data.data || [])
+    } catch (err) {
+      console.error("Error cargando staff", err)
+    }
+  }
+
+  useEffect(() => {
+    fetchStaff()
+  }, [])
 
   const getRoleColor = (role) => {
     switch (role) {
@@ -77,7 +74,10 @@ export default function Staff() {
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setEditingMember(null)
+            setShowModal(true)
+          }}
           className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-lg flex items-center gap-2 transition-smooth shadow-lg shadow-primary/20"
         >
           <Plus className="w-5 h-5" />
@@ -89,19 +89,23 @@ export default function Staff() {
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-xl p-6">
           <p className="text-sm text-muted-foreground mb-1">Total Staff</p>
-          <p className="text-3xl font-bold">4</p>
+          <p className="text-3xl font-bold">{staff.length}</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-6">
-          <p className="text-sm text-muted-foreground mb-1">Activos Hoy</p>
-          <p className="text-3xl font-bold text-primary">3</p>
+          <p className="text-sm text-muted-foreground mb-1">Activos</p>
+          <p className="text-3xl font-bold text-primary">{staff.filter((s) => s.activo).length}</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-6">
           <p className="text-sm text-muted-foreground mb-1">Administradores</p>
-          <p className="text-3xl font-bold">1</p>
+          <p className="text-3xl font-bold">
+            {staff.filter((s) => s.roles?.nombre === "Administrador").length}
+          </p>
         </div>
         <div className="bg-card border border-border rounded-xl p-6">
           <p className="text-sm text-muted-foreground mb-1">Vendedores</p>
-          <p className="text-3xl font-bold">2</p>
+          <p className="text-3xl font-bold">
+            {staff.filter((s) => s.roles?.nombre === "Vendedor").length}
+          </p>
         </div>
       </div>
 
@@ -117,21 +121,23 @@ export default function Staff() {
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center text-white text-xl font-bold">
-                  {member.name
-                    .split(" ")
+                  {member.nombre
+                    ?.split(" ")
                     .map((n) => n[0])
                     .join("")}
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg">{member.name}</h3>
+                  <h3 className="font-bold text-lg">{member.nombre}</h3>
                   <span
-                    className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getRoleColor(member.role)}`}
+                    className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getRoleColor(
+                      member.roles?.nombre
+                    )}`}
                   >
-                    {member.role}
+                    {member.roles?.nombre}
                   </span>
                 </div>
               </div>
-              <div className={`w-3 h-3 rounded-full ${member.status === "active" ? "bg-primary" : "bg-muted"}`} />
+              <div className={`w-3 h-3 rounded-full ${member.activo ? "bg-primary" : "bg-muted"}`} />
             </div>
 
             {/* Información de Contacto */}
@@ -142,11 +148,11 @@ export default function Staff() {
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="w-4 h-4" />
-                <span>{member.phone}</span>
+                <span>—</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Calendar className="w-4 h-4" />
-                <span>Ingresó: {member.joinedAt}</span>
+                <span>Registrado</span>
               </div>
             </div>
 
@@ -157,30 +163,26 @@ export default function Staff() {
                 Permisos
               </p>
               <div className="flex flex-wrap gap-2">
-                {member.permissions.includes("all") ? (
-                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-md">Acceso Total</span>
-                ) : (
-                  member.permissions.map((perm) => (
-                    <span
-                      key={perm}
-                      className="px-2 py-1 bg-muted text-muted-foreground text-xs rounded-md capitalize"
-                    >
-                      {perm}
-                    </span>
-                  ))
-                )}
+                <span className="px-2 py-1 bg-muted text-muted-foreground text-xs rounded-md">
+                  {member.roles?.nombre || "Sin rol"}
+                </span>
               </div>
             </div>
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-4 border-t border-border">
-              <span className="text-xs text-muted-foreground">Última actividad: {member.lastActive}</span>
+              <span className="text-xs text-muted-foreground">
+                Estado: {member.activo ? "Activo" : "Inactivo"}
+              </span>
               <div className="flex gap-2">
-                <button className="px-3 py-1 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors">
+                <button
+                  className="px-3 py-1 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                  onClick={() => {
+                    setEditingMember(member)
+                    setShowModal(true)
+                  }}
+                >
                   Editar
-                </button>
-                <button className="px-3 py-1 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
-                  Eliminar
                 </button>
               </div>
             </div>
@@ -188,8 +190,16 @@ export default function Staff() {
         ))}
       </div>
 
-      {/* Modal (extraído a components/modales) */}
-      <CrearStaffModal open={showModal} onClose={() => setShowModal(false)} />
+      <CrearStaffModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onSaved={() => {
+          setShowModal(false)
+          setEditingMember(null)
+          fetchStaff()
+        }}
+        editingMember={editingMember}
+      />
     </div>
   )
 }

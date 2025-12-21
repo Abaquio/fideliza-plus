@@ -7,6 +7,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import clientesRoutes from "./routes/clientes.routes.js";
+import staffRoutes from "./routes/staff.routes.js";
 
 export const app = express();
 
@@ -56,6 +57,9 @@ app.get("/health", (req, res) => {
 // Rutas API
 app.use("/api/auth", authRoutes);
 app.use("/api/clientes", clientesRoutes);
+
+// ✅ STAFF (NUEVO)
+app.use("/api/staff", staffRoutes);
 
 // Compatibilidad antigua
 app.use("/auth", authRoutes);
