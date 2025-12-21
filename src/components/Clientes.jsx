@@ -5,12 +5,9 @@ import { Search, Plus, Eye, Edit, Mail, Phone } from "lucide-react"
 
 import NuevoClienteModal from "../components/modales/NuevoClienteModal"
 import ImportarClientesModal from "../components/modales/ImportarClientesModal"
-
-// ✅ Nuevos modales
 import VerClienteModal from "../components/modales/VerClienteModal"
 import EditarClienteModal from "../components/modales/EditarClienteModal"
 
-// ✅ Validado UI (mismo que usas en otros lados)
 import ValidadoCard from "../ui/validado"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
@@ -39,7 +36,6 @@ function computeTier(points) {
 }
 
 function buildPagination(currentPage, totalPages) {
-  // Devuelve array de números y "..." para render
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, i) => i + 1)
   }
@@ -62,24 +58,21 @@ export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState("")
   const [showModal, setShowModal] = useState(false)
 
-  // ✅ Import modal
   const [showImportModal, setShowImportModal] = useState(false)
   const [importing, setImporting] = useState(false)
 
-  // ✅ Ver / Edit modales
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [showViewModal, setShowViewModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
 
   const [clientes, setClientes] = useState([])
+  const [fuentes, setFuentes] = useState([]) // ✅ NUEVO
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
 
-  // ✅ Paginación
   const [currentPage, setCurrentPage] = useState(1)
 
-  // ✅ Validado (para crear cliente)
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoTitle, setValidadoTitle] = useState("Listo")
   const [validadoMessage, setValidadoMessage] = useState("Operación realizada.")
@@ -148,8 +141,43 @@ export default function Clientes() {
     }
   }
 
+  // ✅ NUEVO: cargar fuentes para el select de edición
+  async function fetchFuentes() {
+    try {
+      const token = getAuthToken()
+
+      // Intentamos endpoint más común primero:
+      let res = await fetch(`${API_URL}/api/clientes/fuentes`, {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+
+      // Fallback (por si tu router usa otra ruta)
+      if (!res.ok) {
+        res = await fetch(`${API_URL}/api/fuentes-clientes`, {
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+      }
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return
+
+      const list = Array.isArray(data?.fuentes) ? data.fuentes : []
+      setFuentes(list)
+    } catch {
+      // si falla, no rompemos nada; solo no habrá lista (igual puedes guardar otros cambios)
+      setFuentes([])
+    }
+  }
+
   useEffect(() => {
     fetchClientes("")
+    fetchFuentes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -161,12 +189,10 @@ export default function Clientes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm])
 
-  // ✅ Reset a página 1 cuando cambia la búsqueda
   useEffect(() => {
     setCurrentPage(1)
   }, [searchTerm])
 
-  // ✅ Reset a página 1 cuando llega data nueva (evita quedar en página inválida)
   useEffect(() => {
     setCurrentPage(1)
   }, [clientes.length])
@@ -177,6 +203,7 @@ export default function Clientes() {
     try {
       const token = getAuthToken()
 
+      // ✅ NO agregamos nada acá: el backend asigna Medical Season automáticamente
       const res = await fetch(`${API_URL}/api/clientes`, {
         method: "POST",
         headers: {
@@ -251,7 +278,6 @@ export default function Clientes() {
     setShowEditModal(true)
   }
 
-  // ✅ Paginación calculada (solo cambia el listado, NO el diseño de cards)
   const totalPages = useMemo(() => {
     return Math.max(1, Math.ceil((clientes?.length || 0) / PAGE_SIZE))
   }, [clientes])
@@ -269,7 +295,6 @@ export default function Clientes() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold mb-2">Clientes</h1>
@@ -300,7 +325,6 @@ export default function Clientes() {
         </div>
       ) : null}
 
-      {/* Search and Filters */}
       <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
@@ -335,7 +359,6 @@ export default function Clientes() {
         </div>
       ) : null}
 
-      {/* Clientes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {paginatedClientes.map((cliente, index) => (
           <div
@@ -411,7 +434,6 @@ export default function Clientes() {
         ))}
       </div>
 
-      {/* ✅ Paginación (misma estética, solo botones) */}
       {clientes.length > PAGE_SIZE ? (
         <div className="flex items-center justify-center gap-2 pt-2">
           <button
@@ -452,7 +474,6 @@ export default function Clientes() {
         </div>
       ) : null}
 
-      {/* Modales existentes */}
       <NuevoClienteModal
         open={showModal}
         onClose={() => setShowModal(false)}
@@ -467,7 +488,6 @@ export default function Clientes() {
         isImporting={importing}
       />
 
-      {/* ✅ Ver perfil */}
       <VerClienteModal
         open={showViewModal}
         cliente={selectedCliente}
@@ -477,10 +497,10 @@ export default function Clientes() {
         }}
       />
 
-      {/* ✅ Editar perfil */}
       <EditarClienteModal
         open={showEditModal}
         cliente={selectedCliente}
+        fuentes={fuentes} // ✅ NUEVO
         onClose={() => {
           setShowEditModal(false)
           setSelectedCliente(null)
@@ -489,7 +509,6 @@ export default function Clientes() {
         isSaving={saving}
       />
 
-      {/* ✅ Validado global */}
       <ValidadoCard
         open={validadoOpen}
         title={validadoTitle}

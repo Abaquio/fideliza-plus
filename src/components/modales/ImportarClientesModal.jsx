@@ -24,6 +24,12 @@ function isValidGoogleUrl(value) {
   return value.includes("drive.google.com") || value.includes("docs.google.com")
 }
 
+// ✅ NUEVO: reconocer fuente interna (por flag o por nombre)
+function isInternalSource(source) {
+  const name = String(source?.nombre || "").trim().toLowerCase()
+  return !!source?.es_interna || name === "medical season"
+}
+
 export default function ImportarClientesModal({
   open,
   onClose,
@@ -107,10 +113,17 @@ export default function ImportarClientesModal({
     if (e.target === e.currentTarget) onClose?.()
   }
 
-  const canAdd = useMemo(
-    () => nombre.trim().length > 0 && url.trim().length > 0,
-    [nombre, url]
-  )
+  // ✅ NUEVO: detectar nombre duplicado (case-insensitive)
+  const nombreDuplicado = useMemo(() => {
+    const n = nombre.trim().toLowerCase()
+    if (!n) return false
+    return (sources || []).some((s) => String(s?.nombre || "").trim().toLowerCase() === n)
+  }, [nombre, sources])
+
+  const canAdd = useMemo(() => {
+    // mantenemos tu lógica, pero sumamos "no duplicado"
+    return nombre.trim().length > 0 && url.trim().length > 0 && !nombreDuplicado
+  }, [nombre, url, nombreDuplicado])
 
   async function recargarConEstrategia(fuenteId, estrategia) {
     const res = await fetch(`${API_URL}/api/clientes/fuentes/${fuenteId}/recargar`, {
@@ -190,7 +203,21 @@ export default function ImportarClientesModal({
       })
 
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || "No se pudo crear la fuente")
+
+      // ✅ NUEVO: mensaje amigable si la restricción UNIQUE revienta
+      if (!res.ok) {
+        const msg = String(data?.message || "No se pudo crear la fuente")
+        const looksDuplicate =
+          msg.toLowerCase().includes("duplicate") ||
+          msg.toLowerCase().includes("duplic") ||
+          msg.toLowerCase().includes("unique") ||
+          msg.toLowerCase().includes("23505")
+
+        if (looksDuplicate) {
+          throw new Error("Ya existe una fuente con ese nombre. Usa otro nombre.")
+        }
+        throw new Error(msg)
+      }
 
       setNombre("")
       setUrl("")
@@ -226,6 +253,10 @@ export default function ImportarClientesModal({
     const u = url.trim()
 
     if (!n) return setError("Debes ingresar un nombre para la fuente")
+
+    // ✅ NUEVO: duplicado en el front (por índice UNIQUE)
+    if (nombreDuplicado) return setError("Ya existe una fuente con ese nombre. Usa otro nombre.")
+
     if (!u) return setError("Debes ingresar un enlace")
     if (!isValidGoogleUrl(u)) return setError("El enlace debe ser de Google Drive/Sheets")
 
@@ -240,6 +271,11 @@ export default function ImportarClientesModal({
   }
 
   const handleRecargar = async (source) => {
+    // ✅ NUEVO: si es interna, no permitir
+    if (isInternalSource(source)) {
+      return showValidado("Acción no disponible", "Esta fuente es interna del sistema y no se puede recargar.")
+    }
+
     setWorking(true)
     setError("")
     try {
@@ -302,6 +338,11 @@ export default function ImportarClientesModal({
   }
 
   const handleEliminar = (source) => {
+    // ✅ NUEVO: si es interna, no permitir
+    if (isInternalSource(source)) {
+      return showValidado("Acción no disponible", "Esta fuente es interna del sistema y no se puede eliminar.")
+    }
+
     openConfirm({
       title: "Eliminar fuente",
       message: `¿Eliminar la fuente "${source.nombre}"?\n\nEsto intentará borrar también los clientes asociados a esta fuente.`,
@@ -343,10 +384,19 @@ export default function ImportarClientesModal({
               <label className="block text-sm font-medium mb-2">Nombre de la fuente</label>
               <input
                 value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
+                onChange={(e) => {
+                  setNombre(e.target.value)
+                  if (error) setError("") // no molesta, solo limpia si estabas bloqueado por duplicado
+                }}
                 placeholder="Ej: Universidad X / Local Centro"
                 className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               />
+              {/* ✅ NUEVO: aviso duplicado */}
+              {nombre.trim() && nombreDuplicado && (
+                <p className="mt-1 text-xs text-destructive">
+                  Ya existe una fuente con ese nombre (no se permiten nombres repetidos).
+                </p>
+              )}
             </div>
 
             <div>
@@ -400,43 +450,57 @@ export default function ImportarClientesModal({
               </p>
             ) : (
               <div className="space-y-2">
-                {sources.map((s) => (
-                  <div
-                    key={s.id}
-                    className="bg-card border border-border rounded-lg p-3 flex items-start justify-between gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Link2 className="w-4 h-4 text-muted-foreground" />
-                        <p className="text-sm font-medium truncate">{s.nombre}</p>
+                {sources.map((s) => {
+                  const internal = isInternalSource(s)
+                  return (
+                    <div
+                      key={s.id}
+                      className="bg-card border border-border rounded-lg p-3 flex items-start justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Link2 className="w-4 h-4 text-muted-foreground" />
+                          <p className="text-sm font-medium truncate">{s.nombre}</p>
+
+                          {/* ✅ NUEVO: badge interna */}
+                          {internal && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
+                              Interna
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mt-1">{s.url}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Última recarga: {formatWhen(s.ultima_recarga_en)}
+                        </p>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate mt-1">{s.url}</p>
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        Última recarga: {formatWhen(s.ultima_recarga_en)}
-                      </p>
-                    </div>
 
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        onClick={() => handleRecargar(s)}
-                        disabled={disabled}
-                        className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary"
-                        title="Recargar fuente"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => handleRecargar(s)}
+                          disabled={disabled || internal}
+                          className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary"
+                          title={
+                            internal ? "Fuente interna (no recargable)" : "Recargar fuente"
+                          }
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
 
-                      <button
-                        onClick={() => handleEliminar(s)}
-                        disabled={disabled}
-                        className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-destructive/10 hover:bg-destructive/20 border-destructive/30 text-destructive"
-                        title="Eliminar fuente"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <button
+                          onClick={() => handleEliminar(s)}
+                          disabled={disabled || internal}
+                          className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-destructive/10 hover:bg-destructive/20 border-destructive/30 text-destructive"
+                          title={
+                            internal ? "Fuente interna (no eliminable)" : "Eliminar fuente"
+                          }
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

@@ -9,6 +9,8 @@ import authRoutes from "./routes/auth.routes.js";
 import clientesRoutes from "./routes/clientes.routes.js";
 import descuentosRoutes from "./routes/descuentos.routes.js";
 import staffRoutes from "./routes/staff.routes.js";
+import configuracionRoutes from "./routes/configuracion.routes.js";
+
 
 export const app = express();
 
@@ -63,6 +65,8 @@ app.use("/api/descuentos", descuentosRoutes);
 
 // ✅ STAFF (NUEVO)
 app.use("/api/staff", staffRoutes);
+app.use("/api/configuracion", configuracionRoutes);
+
 
 // Compatibilidad antigua
 app.use("/auth", authRoutes);

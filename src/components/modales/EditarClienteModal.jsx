@@ -1,13 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Save, X, User, Mail, Phone, IdCard, Shield } from "lucide-react"
+import { Save, X, User, Mail, Phone, IdCard, Shield, Link2 } from "lucide-react"
 
-// Tus UI helpers
 import ConfirmDialog from "../../ui/confirm"
 import ValidadoCard from "../../ui/validado"
 
-// Tus validaciones
 import {
   normalizarRut,
   validarRut,
@@ -20,6 +18,7 @@ import {
 export default function EditarClienteModal({
   open,
   cliente,
+  fuentes = [],
   onClose,
   onSubmit,
   isSaving = false,
@@ -31,12 +30,12 @@ export default function EditarClienteModal({
     email: "",
     telefono: "",
     estado: "activo",
+    fuente_id: null, // ✅ NUEVO
   })
 
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState({})
 
-  // Confirm + Validado
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
 
@@ -59,6 +58,7 @@ export default function EditarClienteModal({
       email: cliente?.email && cliente.email !== "-" ? cliente.email : "",
       telefono: cliente?.telefono && cliente.telefono !== "-" ? cliente.telefono : "",
       estado: cliente?.estado || "activo",
+      fuente_id: cliente?.fuente_id ?? null, // ✅ NUEVO
     })
   }, [open, cliente])
 
@@ -79,9 +79,7 @@ export default function EditarClienteModal({
         if (!v) return "RUT es obligatorio"
 
         const n = normalizarRut(v)
-        // Si todavía está incompleto (ej: 1 dígito), no lo castigamos duro
         if (n.replace(/[^0-9K]/g, "").length < 2) return "RUT es obligatorio"
-
         if (!validarRut(n)) return "RUT inválido"
         return null
       }
@@ -105,7 +103,6 @@ export default function EditarClienteModal({
       }
 
       if (key === "telefono") {
-        // Validación “suave” en vivo: si hay algo escrito, revisamos largo básico.
         if (!value) return null
         const digits = String(value).replace(/[^\d]/g, "")
         if (digits.length < 8) return "Teléfono inválido"
@@ -117,6 +114,7 @@ export default function EditarClienteModal({
         return null
       }
 
+      // fuente_id: opcional (puede ser null)
       return null
     } catch (e) {
       return e.message || "Campo inválido"
@@ -132,7 +130,6 @@ export default function EditarClienteModal({
     return nextErrors
   }
 
-  // ✅ Ahora el botón refleja realmente si el formulario está válido
   const isValid = useMemo(() => {
     const nextErrors = validateAll(form)
     return Object.keys(nextErrors).length === 0
@@ -144,7 +141,6 @@ export default function EditarClienteModal({
     setErrors((e) => ({ ...e, _global: undefined, [key]: msg || undefined }))
   }
 
-  // ✅ Cambios en vivo por campo
   const handleChange = (key) => (e) => {
     const raw = e.target.value
 
@@ -156,7 +152,6 @@ export default function EditarClienteModal({
     }
 
     if (key === "nombres" || key === "apellidos") {
-      // sin dobles espacios mientras escribe, sin cortar fuerte el tipeo
       const cleaned = raw.replace(/\s+/g, " ")
       setField(key, cleaned)
       touchAndValidate(key, cleaned)
@@ -164,7 +159,7 @@ export default function EditarClienteModal({
     }
 
     if (key === "email") {
-      const v = raw.trimStart() // evita espacios al inicio
+      const v = raw.trimStart()
       setField("email", v)
       touchAndValidate("email", v)
       return
@@ -176,11 +171,17 @@ export default function EditarClienteModal({
       return
     }
 
+    if (key === "fuente_id") {
+      const v = raw === "" ? null : raw
+      setField("fuente_id", v)
+      touchAndValidate("fuente_id", v)
+      return
+    }
+
     setField(key, raw)
     touchAndValidate(key, raw)
   }
 
-  // ✅ onBlur: normalizaciones “finales”
   const handleBlur = (key) => () => {
     if (key === "nombres" || key === "apellidos") {
       const cleaned = validarYNormalizarNombre(form[key] || "")
@@ -197,8 +198,6 @@ export default function EditarClienteModal({
     }
 
     if (key === "telefono") {
-      // No normalizamos a +56 aquí para no “pelear” con el usuario mientras escribe,
-      // solo validamos suave. La normalización definitiva va al guardar.
       touchAndValidate("telefono", form.telefono)
       return
     }
@@ -229,11 +228,13 @@ export default function EditarClienteModal({
 
     payload.estado = payload.estado || "activo"
 
+    // ✅ fuente_id puede ser null
+    payload.fuente_id = payload.fuente_id || null
+
     return payload
   }
 
   const handleSave = () => {
-    // marcar todo como tocado
     setTouched({
       rut: true,
       nombres: true,
@@ -241,9 +242,9 @@ export default function EditarClienteModal({
       email: true,
       telefono: true,
       estado: true,
+      fuente_id: true,
     })
 
-    // validar todo
     const nextErrors = validateAll(form)
     setErrors(nextErrors)
 
@@ -279,7 +280,6 @@ export default function EditarClienteModal({
       className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
       onMouseDown={handleBackdropClick}
     >
-      {/* ✅ tamaño L */}
       <div className="bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
@@ -319,9 +319,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="11222333-4"
             />
-            {touched.rut && errors.rut ? (
-              <p className="text-xs text-destructive">{errors.rut}</p>
-            ) : null}
+            {touched.rut && errors.rut ? <p className="text-xs text-destructive">{errors.rut}</p> : null}
           </div>
 
           {/* Estado */}
@@ -339,9 +337,7 @@ export default function EditarClienteModal({
               <option value="activo">Activo</option>
               <option value="bloqueado">Bloqueado</option>
             </select>
-            {touched.estado && errors.estado ? (
-              <p className="text-xs text-destructive">{errors.estado}</p>
-            ) : null}
+            {touched.estado && errors.estado ? <p className="text-xs text-destructive">{errors.estado}</p> : null}
           </div>
 
           {/* Nombres */}
@@ -357,9 +353,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Juan Pablo"
             />
-            {touched.nombres && errors.nombres ? (
-              <p className="text-xs text-destructive">{errors.nombres}</p>
-            ) : null}
+            {touched.nombres && errors.nombres ? <p className="text-xs text-destructive">{errors.nombres}</p> : null}
           </div>
 
           {/* Apellidos */}
@@ -375,9 +369,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Pérez Soto"
             />
-            {touched.apellidos && errors.apellidos ? (
-              <p className="text-xs text-destructive">{errors.apellidos}</p>
-            ) : null}
+            {touched.apellidos && errors.apellidos ? <p className="text-xs text-destructive">{errors.apellidos}</p> : null}
           </div>
 
           {/* Email */}
@@ -393,9 +385,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="correo@dominio.cl"
             />
-            {touched.email && errors.email ? (
-              <p className="text-xs text-destructive">{errors.email}</p>
-            ) : null}
+            {touched.email && errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
           </div>
 
           {/* Teléfono */}
@@ -411,13 +401,35 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="+56912345678"
             />
-            {touched.telefono && errors.telefono ? (
-              <p className="text-xs text-destructive">{errors.telefono}</p>
-            ) : null}
+            {touched.telefono && errors.telefono ? <p className="text-xs text-destructive">{errors.telefono}</p> : null}
+          </div>
+
+          {/* ✅ NUEVO: Fuente */}
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-muted-foreground" />
+              Fuente del cliente
+            </label>
+            <select
+              value={form.fuente_id ?? ""}
+              onChange={handleChange("fuente_id")}
+              className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Sin fuente (manual)</option>
+              {(fuentes || [])
+                .filter((f) => f?.activo !== false)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nombre}
+                  </option>
+                ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Puedes cambiar de dónde proviene este cliente (por ejemplo, Medical Season).
+            </p>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex flex-col sm:flex-row gap-3 mt-6">
           <button
             onClick={onClose}
@@ -438,7 +450,6 @@ export default function EditarClienteModal({
         </div>
       </div>
 
-      {/* Confirm + Validado */}
       <ConfirmDialog
         open={confirmOpen}
         title="Confirmar cambios"

@@ -1,100 +1,437 @@
-import { Store, DollarSign, Bell, Palette, Database, Mail } from "lucide-react"
+import React, { useEffect, useMemo, useState } from "react"
+import { Store, DollarSign } from "lucide-react"
+
+// Ajusta estos imports si en tu proyecto están en otra ruta
+import ConfirmDialog from "../ui/confirm"
+import ValidadoCard from "../ui/validado"
 
 export default function Configuracion() {
+  /**
+   * API_BASE blindado (no rompe prod/local)
+   * - Si VITE_API_URL ya trae /api, se respeta
+   * - Si no, se le agrega /api
+   */
+  const API_BASE = useMemo(() => {
+    const isProd = import.meta.env.MODE === "production"
+    const fallback = isProd ? "https://fideliza-plus.onrender.com" : "http://localhost:4000"
+    const raw = (import.meta?.env?.VITE_API_URL || fallback).replace(/\/$/, "")
+    return raw.endsWith("/api") ? raw : `${raw}/api`
+  }, [])
+
+  const token = useMemo(() => localStorage.getItem("token") || "", [])
+
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState("")
+
+  // Modo edición por sección
+  const [editTienda, setEditTienda] = useState(false)
+  const [editPuntos, setEditPuntos] = useState(false)
+
+  // UI Confirm + Validado
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [validadoOpen, setValidadoOpen] = useState(false)
+
+  // Para saber qué sección pidió guardar (solo UX)
+  const [seccionGuardar, setSeccionGuardar] = useState(null) // "tienda" | "puntos" | null
+
+  // Form
+  const [form, setForm] = useState({
+    tienda_nombre: "",
+    tienda_email: "",
+    tienda_telefono: "",
+    tienda_web: "",
+    tienda_descripcion: "",
+    puntos_por_cada_monto: 1,
+    monto_base_puntos: 1000,
+    puntos_bienvenida: 100,
+  })
+
+  const setField = (k, v) => setForm((prev) => ({ ...prev, [k]: v }))
+
+  const cargar = async () => {
+    setLoading(true)
+    setErrorMsg("")
+    try {
+      const res = await fetch(`${API_BASE}/configuracion`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.ok) {
+        setErrorMsg(data?.message || "No se pudo cargar la configuración")
+        setLoading(false)
+        return
+      }
+
+      const cfg = data.data || {}
+      setForm({
+        tienda_nombre: cfg.tienda_nombre ?? "",
+        tienda_email: cfg.tienda_email ?? "",
+        tienda_telefono: cfg.tienda_telefono ?? "",
+        tienda_web: cfg.tienda_web ?? "",
+        tienda_descripcion: cfg.tienda_descripcion ?? "",
+        puntos_por_cada_monto: cfg.puntos_por_cada_monto ?? 1,
+        monto_base_puntos: cfg.monto_base_puntos ?? 1000,
+        puntos_bienvenida: cfg.puntos_bienvenida ?? 100,
+      })
+    } catch (e) {
+      setErrorMsg("Error de conexión con el servidor")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    cargar()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const validarFront = () => {
+    if (!form.tienda_nombre?.trim()) return "El nombre de la tienda es obligatorio"
+    if (!form.tienda_email?.trim() || !form.tienda_email.includes("@")) return "Email de contacto inválido"
+
+    const ppm = Number(form.puntos_por_cada_monto)
+    const mbp = Number(form.monto_base_puntos)
+    const pb = Number(form.puntos_bienvenida)
+
+    if (!Number.isFinite(ppm) || ppm < 1) return "La tasa de puntos debe ser >= 1"
+    if (!Number.isFinite(mbp) || mbp < 1) return "El monto base debe ser >= 1"
+    if (!Number.isFinite(pb) || pb < 0) return "Los puntos de bienvenida deben ser >= 0"
+
+    return ""
+  }
+
+  const onClickGuardarSeccion = (seccion) => {
+    const msg = validarFront()
+    if (msg) {
+      setErrorMsg(msg)
+      return
+    }
+    setSeccionGuardar(seccion)
+    setConfirmOpen(true)
+  }
+
+  const guardar = async () => {
+    setConfirmOpen(false)
+    setSaving(true)
+    setErrorMsg("")
+
+    try {
+      // Guardamos la configuración completa (simple, robusto, no rompe nada)
+      const payload = {
+        tienda_nombre: form.tienda_nombre.trim(),
+        tienda_email: form.tienda_email.trim(),
+        tienda_telefono: form.tienda_telefono?.trim() || null,
+        tienda_web: form.tienda_web?.trim() || null,
+        tienda_descripcion: form.tienda_descripcion?.trim() || null,
+        puntos_por_cada_monto: Math.floor(Number(form.puntos_por_cada_monto)),
+        monto_base_puntos: Math.floor(Number(form.monto_base_puntos)),
+        puntos_bienvenida: Math.floor(Number(form.puntos_bienvenida)),
+      }
+
+      const res = await fetch(`${API_BASE}/configuracion`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.ok) {
+        setErrorMsg(data?.message || "No se pudo guardar la configuración")
+        setSaving(false)
+        return
+      }
+
+      // Refrescamos con lo que devuelve backend
+      const cfg = data.data || {}
+      setForm({
+        tienda_nombre: cfg.tienda_nombre ?? "",
+        tienda_email: cfg.tienda_email ?? "",
+        tienda_telefono: cfg.tienda_telefono ?? "",
+        tienda_web: cfg.tienda_web ?? "",
+        tienda_descripcion: cfg.tienda_descripcion ?? "",
+        puntos_por_cada_monto: cfg.puntos_por_cada_monto ?? 1,
+        monto_base_puntos: cfg.monto_base_puntos ?? 1000,
+        puntos_bienvenida: cfg.puntos_bienvenida ?? 100,
+      })
+
+      // Cerramos edición de la sección que estaba editando (o ambas por seguridad)
+      if (seccionGuardar === "tienda") setEditTienda(false)
+      if (seccionGuardar === "puntos") setEditPuntos(false)
+      setSeccionGuardar(null)
+
+      setValidadoOpen(true)
+      window.setTimeout(() => setValidadoOpen(false), 2500)
+    } catch (e) {
+      setErrorMsg("Error de conexión con el servidor")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const cancelarEdicionTienda = async () => {
+    setEditTienda(false)
+    await cargar()
+  }
+
+  const cancelarEdicionPuntos = async () => {
+    setEditPuntos(false)
+    await cargar()
+  }
+
+  const inputDisabledClass = "opacity-70 cursor-not-allowed"
+  const sectionDisabled = loading || saving
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Validado */}
+      <ValidadoCard
+        open={validadoOpen}
+        title="Configuración guardada"
+        message="Los cambios se guardaron correctamente."
+        onClose={() => setValidadoOpen(false)}
+      />
+
+      {/* Confirm */}
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Guardar configuración"
+        message={`¿Confirmas guardar los cambios de ${
+          seccionGuardar === "tienda" ? "Información de la Tienda" : "Sistema de Puntos"
+        }?`}
+        confirmLabel={saving ? "Guardando..." : "Guardar"}
+        cancelLabel="Cancelar"
+        onCancel={() => {
+          if (!saving) {
+            setConfirmOpen(false)
+            setSeccionGuardar(null)
+          }
+        }}
+        onConfirm={guardar}
+      />
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold mb-2">Configuración</h1>
         <p className="text-muted-foreground">Personaliza tu tienda y sistema de fidelización</p>
       </div>
 
-      {/* Información de la Tienda */}
-      <div className="bg-card border border-border rounded-xl p-6 animate-scale-in">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Store className="w-5 h-5 text-primary" />
+      {!!errorMsg && (
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg px-4 py-3">
+          {errorMsg}
+        </div>
+      )}
+
+      {/* ==========================
           Información de la Tienda
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+         ========================== */}
+      <div className="bg-card border border-border rounded-xl p-6 animate-scale-in">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Store className="w-5 h-5 text-primary" />
+            Información de la Tienda
+          </h2>
+
+          {!editTienda ? (
+            <button
+              type="button"
+              onClick={() => setEditTienda(true)}
+              disabled={sectionDisabled}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors disabled:opacity-60"
+            >
+              Editar
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={cancelarEdicionTienda}
+                disabled={sectionDisabled}
+                className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => onClickGuardarSeccion("tienda")}
+                disabled={sectionDisabled}
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors disabled:opacity-60"
+              >
+                Guardar
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${loading ? "opacity-60 pointer-events-none" : ""}`}>
           <div>
             <label className="block text-sm font-medium mb-2">Nombre de la Tienda</label>
             <input
               type="text"
-              defaultValue="Mi Tienda Plus"
-              className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              value={form.tienda_nombre}
+              onChange={(e) => setField("tienda_nombre", e.target.value)}
+              disabled={!editTienda || sectionDisabled}
+              className={`w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none ${
+                !editTienda ? inputDisabledClass : "focus:ring-2 focus:ring-primary"
+              }`}
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium mb-2">Email de Contacto</label>
             <input
               type="email"
-              defaultValue="contacto@mitienda.com"
-              className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              value={form.tienda_email}
+              onChange={(e) => setField("tienda_email", e.target.value)}
+              disabled={!editTienda || sectionDisabled}
+              className={`w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none ${
+                !editTienda ? inputDisabledClass : "focus:ring-2 focus:ring-primary"
+              }`}
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium mb-2">Teléfono</label>
             <input
               type="tel"
-              defaultValue="+34 600 000 000"
-              className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              value={form.tienda_telefono}
+              onChange={(e) => setField("tienda_telefono", e.target.value)}
+              placeholder="+56 9 0000 0000"
+              disabled={!editTienda || sectionDisabled}
+              className={`w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none ${
+                !editTienda ? inputDisabledClass : "focus:ring-2 focus:ring-primary"
+              }`}
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium mb-2">Sitio Web</label>
             <input
               type="url"
-              defaultValue="https://mitienda.com"
-              className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              value={form.tienda_web}
+              onChange={(e) => setField("tienda_web", e.target.value)}
+              placeholder="https://mitienda.com"
+              disabled={!editTienda || sectionDisabled}
+              className={`w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none ${
+                !editTienda ? inputDisabledClass : "focus:ring-2 focus:ring-primary"
+              }`}
             />
           </div>
+
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium mb-2">Dirección</label>
+            <label className="block text-sm font-medium mb-2">Descripción</label>
             <textarea
               rows={3}
-              defaultValue="Calle Principal 123, Madrid, España"
-              className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              value={form.tienda_descripcion}
+              onChange={(e) => setField("tienda_descripcion", e.target.value)}
+              placeholder="Dirección / descripción de la tienda"
+              disabled={!editTienda || sectionDisabled}
+              className={`w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none resize-none ${
+                !editTienda ? inputDisabledClass : "focus:ring-2 focus:ring-primary"
+              }`}
             />
           </div>
         </div>
       </div>
 
-      {/* Configuración de Puntos */}
-      <div className="bg-card border border-border rounded-xl p-6 animate-scale-in animate-delay-100">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-accent" />
+      {/* ======================
           Sistema de Puntos
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+         ====================== */}
+      <div className="bg-card border border-border rounded-xl p-6 animate-scale-in animate-delay-100">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-accent" />
+            Sistema de Puntos
+          </h2>
+
+          {!editPuntos ? (
+            <button
+              type="button"
+              onClick={() => setEditPuntos(true)}
+              disabled={sectionDisabled}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors disabled:opacity-60"
+            >
+              Editar
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={cancelarEdicionPuntos}
+                disabled={sectionDisabled}
+                className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => onClickGuardarSeccion("puntos")}
+                disabled={sectionDisabled}
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors disabled:opacity-60"
+              >
+                Guardar
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${loading ? "opacity-60 pointer-events-none" : ""}`}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">Tasa de Conversión</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  defaultValue="1"
-                  className="flex-1 px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  min={1}
+                  step={1}
+                  value={form.puntos_por_cada_monto}
+                  onChange={(e) => setField("puntos_por_cada_monto", e.target.value)}
+                  disabled={!editPuntos || sectionDisabled}
+                  className={`flex-1 px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none ${
+                    !editPuntos ? inputDisabledClass : "focus:ring-2 focus:ring-primary"
+                  }`}
                 />
                 <span className="text-sm text-muted-foreground">puntos por cada</span>
                 <input
                   type="number"
-                  defaultValue="1"
-                  className="w-20 px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  min={1}
+                  step={1}
+                  value={form.monto_base_puntos}
+                  onChange={(e) => setField("monto_base_puntos", e.target.value)}
+                  disabled={!editPuntos || sectionDisabled}
+                  className={`w-24 px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none ${
+                    !editPuntos ? inputDisabledClass : "focus:ring-2 focus:ring-primary"
+                  }`}
                 />
                 <span className="text-sm text-muted-foreground">$</span>
               </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ej: {Number(form.puntos_por_cada_monto || 1)} punto(s) por cada ${Number(form.monto_base_puntos || 1000)} (CLP)
+              </p>
             </div>
+
             <div>
               <label className="block text-sm font-medium mb-2">Puntos de Bienvenida</label>
               <input
                 type="number"
-                defaultValue="100"
-                className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                min={0}
+                step={1}
+                value={form.puntos_bienvenida}
+                onChange={(e) => setField("puntos_bienvenida", e.target.value)}
+                disabled={!editPuntos || sectionDisabled}
+                className={`w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none ${
+                  !editPuntos ? inputDisabledClass : "focus:ring-2 focus:ring-primary"
+                }`}
               />
               <p className="text-xs text-muted-foreground mt-1">Puntos otorgados al registrarse</p>
             </div>
           </div>
 
+          {/* Caja informativa (solo visual, no rompe diseño) */}
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
             <h3 className="font-medium mb-3">Niveles de Cliente</h3>
             <div className="space-y-2">
@@ -113,85 +450,6 @@ export default function Configuracion() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Notificaciones */}
-      <div className="bg-card border border-border rounded-xl p-6 animate-scale-in animate-delay-200">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Bell className="w-5 h-5 text-chart-3" />
-          Notificaciones
-        </h2>
-        <div className="space-y-4">
-          <label className="flex items-center justify-between p-4 bg-muted/30 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-            <div className="flex items-center gap-3">
-              <Mail className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="font-medium">Email al Cliente</p>
-                <p className="text-sm text-muted-foreground">Notificar al cliente después de cada compra</p>
-              </div>
-            </div>
-            <input type="checkbox" defaultChecked className="w-5 h-5" />
-          </label>
-
-          <label className="flex items-center justify-between p-4 bg-muted/30 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-            <div className="flex items-center gap-3">
-              <Bell className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="font-medium">Recordatorios de Puntos</p>
-                <p className="text-sm text-muted-foreground">
-                  Recordar a clientes cuando estén cerca de canjear cupones
-                </p>
-              </div>
-            </div>
-            <input type="checkbox" defaultChecked className="w-5 h-5" />
-          </label>
-
-          <label className="flex items-center justify-between p-4 bg-muted/30 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-            <div className="flex items-center gap-3">
-              <Database className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="font-medium">Reportes Semanales</p>
-                <p className="text-sm text-muted-foreground">Recibir resumen de actividad cada semana</p>
-              </div>
-            </div>
-            <input type="checkbox" className="w-5 h-5" />
-          </label>
-        </div>
-      </div>
-
-      {/* Apariencia */}
-      <div className="bg-card border border-border rounded-xl p-6 animate-scale-in animate-delay-300">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Palette className="w-5 h-5 text-chart-4" />
-          Apariencia
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button className="p-4 bg-gradient-to-br from-primary to-accent rounded-lg border-2 border-primary">
-            <div className="w-full aspect-square rounded mb-2" />
-            <p className="text-sm font-medium">Verde Esmeralda</p>
-            <p className="text-xs text-muted-foreground">Actual</p>
-          </button>
-          <button className="p-4 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg border-2 border-transparent hover:border-border transition-colors">
-            <div className="w-full aspect-square rounded mb-2" />
-            <p className="text-sm font-medium">Azul Oceánico</p>
-          </button>
-          <button className="p-4 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg border-2 border-transparent hover:border-border transition-colors">
-            <div className="w-full aspect-square rounded mb-2" />
-            <p className="text-sm font-medium">Púrpura Moderno</p>
-          </button>
-          <button className="p-4 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg border-2 border-transparent hover:border-border transition-colors">
-            <div className="w-full aspect-square rounded mb-2" />
-            <p className="text-sm font-medium">Naranja Vibrante</p>
-          </button>
-        </div>
-      </div>
-
-      {/* Botón Guardar */}
-      <div className="flex justify-end gap-3 animate-fade-in">
-        <button className="px-6 py-3 bg-muted hover:bg-muted/80 rounded-lg transition-colors">Cancelar</button>
-        <button className="px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors shadow-lg shadow-primary/20">
-          Guardar Cambios
-        </button>
       </div>
     </div>
   )
