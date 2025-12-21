@@ -1,68 +1,158 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Plus, Gift, Percent, Calendar, Users } from "lucide-react"
+
+import CrearCuponModal from "./modales/CrearCuponModal"
+import ConfirmDialog from "../ui/confirm"
+import ValidadoCard from "../ui/validado"
+
+function getApiBase() {
+  const host = window.location.hostname
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
+  return "https://fideliza-plus.onrender.com"
+}
+
+async function safeJsonFetch(url, options) {
+  const res = await fetch(url, options)
+  const ct = res.headers.get("content-type") || ""
+  if (!ct.includes("application/json")) {
+    const text = await res.text()
+    throw new Error(`Respuesta no-JSON (${res.status}) en ${url}. ${text.slice(0, 80)}`)
+  }
+  const data = await res.json()
+  return { res, data }
+}
+
+function formatFecha(fechaISO) {
+  if (!fechaISO) return "—"
+  const d = new Date(fechaISO)
+  if (Number.isNaN(d.getTime())) return "—"
+  return d.toLocaleDateString("es-CL")
+}
+
+function formatDescuento(tipo, valor) {
+  if (tipo === "porcentaje") return `${Number(valor)}%`
+  if (tipo === "monto_fijo") return `$${Number(valor)}`
+  return `$${Number(valor)}`
+}
 
 export default function Descuentos() {
   const [showModal, setShowModal] = useState(false)
+  const [editingCupon, setEditingCupon] = useState(null)
+  const [cupones, setCupones] = useState([])
 
-  const cupones = [
-    {
-      id: 1,
-      code: "VERANO2025",
-      discount: "20%",
-      points: 500,
-      minPurchase: 50,
-      expiresAt: "31/12/2025",
-      used: 45,
-      total: 100,
-      status: "active",
-    },
-    {
-      id: 2,
-      code: "WELCOME10",
-      discount: "10%",
-      points: 200,
-      minPurchase: 20,
-      expiresAt: "31/01/2026",
-      used: 123,
-      total: 500,
-      status: "active",
-    },
-    {
-      id: 3,
-      code: "FIDELIZA50",
-      discount: "$50",
-      points: 1000,
-      minPurchase: 100,
-      expiresAt: "15/03/2026",
-      used: 8,
-      total: 50,
-      status: "active",
-    },
-    {
-      id: 4,
-      code: "BLACKFRIDAY",
-      discount: "30%",
-      points: 800,
-      minPurchase: 75,
-      expiresAt: "30/11/2025",
-      used: 234,
-      total: 1000,
-      status: "expired",
-    },
-  ]
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+
+  const [validadoOpen, setValidadoOpen] = useState(false)
+  const [validadoTitle, setValidadoTitle] = useState("")
+  const [validadoMessage, setValidadoMessage] = useState("")
+
+  const showValidado = (title, message) => {
+    setValidadoTitle(title)
+    setValidadoMessage(message)
+    setValidadoOpen(true)
+    window.clearTimeout(showValidado.__t)
+    showValidado.__t = window.setTimeout(() => setValidadoOpen(false), 3200)
+  }
+
+  const fetchCupones = async () => {
+    try {
+      const API = getApiBase()
+      const token = localStorage.getItem("token")
+      const { data } = await safeJsonFetch(`${API}/api/descuentos`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (data.ok) setCupones(data.data || [])
+    } catch (e) {
+      console.error("Error cargando cupones:", e)
+    }
+  }
+
+  useEffect(() => {
+    fetchCupones()
+  }, [])
+
+  const stats = useMemo(() => {
+    const activos = cupones.filter((c) => String(c.estado).toLowerCase() === "activo").length
+    const usados = cupones.filter(
+      (c) => !!c.compra_id || String(c.estado).toLowerCase() === "usado"
+    ).length
+    const porVencer = cupones.filter((c) => {
+      if (!c.vence_en) return false
+      const d = new Date(c.vence_en)
+      if (Number.isNaN(d.getTime())) return false
+      const diffDays = (d.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      return diffDays >= 0 && diffDays <= 7
+    }).length
+
+    return { activos, usados, porVencer }
+  }, [cupones])
+
+  const handleDelete = async (cupon) => {
+    try {
+      const API = getApiBase()
+      const token = localStorage.getItem("token")
+
+      const { data } = await safeJsonFetch(`${API}/api/descuentos/${cupon.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (!data.ok) {
+        alert(data.message || "No se pudo eliminar")
+        return
+      }
+
+      fetchCupones()
+      showValidado("Cupón eliminado", "El cupón se eliminó correctamente.")
+    } catch (e) {
+      console.error(e)
+      alert("No se pudo eliminar (revisa consola)")
+    }
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <ValidadoCard
+        open={validadoOpen}
+        title={validadoTitle}
+        message={validadoMessage}
+        onClose={() => setValidadoOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Confirmar eliminación"
+        message="¿Seguro que quieres eliminar este cupón?"
+        confirmLabel="Sí, eliminar"
+        cancelLabel="Cancelar"
+        onCancel={() => {
+          setConfirmDeleteOpen(false)
+          setDeleteTarget(null)
+        }}
+        onConfirm={() => {
+          const target = deleteTarget
+          setConfirmDeleteOpen(false)
+          setDeleteTarget(null)
+          if (target) handleDelete(target)
+        }}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold mb-2">Descuentos y Cupones</h1>
-          <p className="text-muted-foreground">Crea y gestiona cupones canjeables por puntos</p>
+          <p className="text-muted-foreground">
+            Crea y gestiona cupones canjeables por puntos
+          </p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setEditingCupon(null)
+            setShowModal(true)
+          }}
           className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-lg flex items-center gap-2 transition-smooth shadow-lg shadow-primary/20"
         >
           <Plus className="w-5 h-5" />
@@ -77,193 +167,167 @@ export default function Descuentos() {
             <Gift className="w-5 h-5 text-primary" />
             <span className="text-sm text-muted-foreground">Cupones Activos</span>
           </div>
-          <p className="text-3xl font-bold">3</p>
+          <p className="text-3xl font-bold">{stats.activos}</p>
         </div>
+
         <div className="bg-card border border-border rounded-xl p-6">
           <div className="flex items-center gap-3 mb-2">
             <Users className="w-5 h-5 text-accent" />
             <span className="text-sm text-muted-foreground">Total Canjeados</span>
           </div>
-          <p className="text-3xl font-bold">410</p>
+          <p className="text-3xl font-bold">{stats.usados}</p>
         </div>
+
         <div className="bg-card border border-border rounded-xl p-6">
           <div className="flex items-center gap-3 mb-2">
             <Percent className="w-5 h-5 text-chart-3" />
             <span className="text-sm text-muted-foreground">Ahorro Total</span>
           </div>
-          <p className="text-3xl font-bold">$8.2K</p>
+          <p className="text-3xl font-bold">—</p>
         </div>
+
         <div className="bg-card border border-border rounded-xl p-6">
           <div className="flex items-center gap-3 mb-2">
             <Calendar className="w-5 h-5 text-chart-4" />
-            <span className="text-sm text-muted-foreground">Por Vencer</span>
+            <span className="text-sm text-muted-foreground">Por Vencer (7d)</span>
           </div>
-          <p className="text-3xl font-bold">1</p>
+          <p className="text-3xl font-bold">{stats.porVencer}</p>
         </div>
       </div>
 
-      {/* Cupones Grid */}
+      {/* Cupones */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {cupones.map((cupon, index) => (
-          <div
-            key={cupon.id}
-            className={`
-              bg-gradient-to-br from-card via-card to-muted/20 
-              border border-border rounded-xl p-6 hover-lift animate-scale-in
-              ${cupon.status === "expired" ? "opacity-60" : ""}
-            `}
-            style={{ animationDelay: `${index * 0.1}s` }}
-          >
-            {/* Header del Cupón */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center">
-                  <Gift className="w-6 h-6 text-white" />
+        {cupones.map((cupon, index) => {
+          const status = String(cupon.estado || "").toLowerCase()
+          const isExpired = status === "expirado"
+          const isActive = status === "activo"
+
+          const createdBy =
+            cupon.usuarios?.nombre ||
+            cupon.usuarios?.email ||
+            "—"
+
+          const usado = !!cupon.compra_id || status === "usado"
+          const usedCount = usado ? 1 : 0
+
+          return (
+            <div
+              key={cupon.id}
+              className={`
+                bg-gradient-to-br from-card via-card to-muted/20
+                border border-border rounded-xl p-6 hover-lift animate-scale-in
+                ${isExpired ? "opacity-60" : ""}
+              `}
+              style={{ animationDelay: `${index * 0.1}s` }}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center">
+                    <Gift className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold font-mono">{cupon.codigo}</h3>
+                    <span
+                      className={`inline-block px-2 py-0.5 text-xs rounded-full ${
+                        isActive
+                          ? "bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {isActive ? "Activo" : cupon.estado}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold font-mono">{cupon.code}</h3>
-                  <span
-                    className={`inline-block px-2 py-0.5 text-xs rounded-full ${
-                      cupon.status === "active" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {cupon.status === "active" ? "Activo" : "Expirado"}
-                  </span>
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-primary">
+                    {formatDescuento(cupon.tipo_descuento, cupon.valor)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">descuento</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-primary">{cupon.discount}</p>
-                <p className="text-xs text-muted-foreground">descuento</p>
-              </div>
-            </div>
 
-            {/* Detalles */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-muted/50 rounded-lg p-3">
-                <p className="text-xs text-muted-foreground mb-1">Costo en Puntos</p>
-                <p className="text-lg font-bold">{cupon.points} pts</p>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-3">
-                <p className="text-xs text-muted-foreground mb-1">Compra Mínima</p>
-                <p className="text-lg font-bold">${cupon.minPurchase}</p>
-              </div>
-            </div>
-
-            {/* Progreso */}
-            <div className="mb-4">
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">Uso</span>
-                <span className="font-medium">
-                  {cupon.used} / {cupon.total}
-                </span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-primary to-accent h-full transition-all duration-500"
-                  style={{ width: `${(cupon.used / cupon.total) * 100}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between pt-4 border-t border-border">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="w-4 h-4" />
-                <span>Vence: {cupon.expiresAt}</span>
-              </div>
-              <div className="flex gap-2">
-                <button className="px-3 py-1 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors">
-                  Editar
-                </button>
-                <button className="px-3 py-1 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
-                  Eliminar
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Modal Crear Cupón */}
-      {showModal && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full animate-scale-in">
-            <h2 className="text-2xl font-bold mb-4">Crear Nuevo Cupón</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Código del Cupón</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary font-mono"
-                  placeholder="VERANO2025"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Tipo Descuento</label>
-                  <select className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
-                    <option>Porcentaje</option>
-                    <option>Monto Fijo</option>
-                  </select>
+              {/* Detalles */}
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Creado por</p>
+                  <p className="text-sm font-bold line-clamp-1">{createdBy}</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Valor</label>
-                  <input
-                    type="number"
-                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="20"
+
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Costo</p>
+                  <p className="text-lg font-bold">
+                    {Number(cupon.costo_puntos || 0)} pts
+                  </p>
+                </div>
+              </div>
+
+              {/* Uso */}
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-muted-foreground">Uso</span>
+                  <span className="font-medium">Usos: {usedCount}</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-primary to-accent h-full transition-all duration-500"
+                    style={{ width: usado ? "100%" : "0%" }}
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Costo en Puntos</label>
-                <input
-                  type="number"
-                  className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Compra Mínima ($)</label>
-                <input
-                  type="number"
-                  className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Fecha de Expiración</label>
-                <input
-                  type="date"
-                  className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Cantidad Máxima</label>
-                <input
-                  type="number"
-                  className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="100"
-                />
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
-                >
-                  Crear Cupón
-                </button>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-4 border-t border-border">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="w-4 h-4" />
+                  <span>Vence: {formatFecha(cupon.vence_en)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className="px-3 py-1 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                    onClick={() => {
+                      setEditingCupon(cupon)
+                      setShowModal(true)
+                    }}
+                  >
+                    Editar
+                  </button>
+                  <button
+                    className="px-3 py-1 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                    onClick={() => {
+                      setDeleteTarget(cupon)
+                      setConfirmDeleteOpen(true)
+                    }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          )
+        })}
+      </div>
+
+      {/* Modal */}
+      <CrearCuponModal
+        open={showModal}
+        editingCupon={editingCupon}
+        onClose={() => {
+          setShowModal(false)
+          setEditingCupon(null)
+        }}
+        onSaved={({ action }) => {
+          setShowModal(false)
+          setEditingCupon(null)
+          fetchCupones()
+          showValidado(
+            action === "edit" ? "Cupón actualizado" : "Cupón creado",
+            action === "edit"
+              ? "Los cambios se guardaron correctamente."
+              : "El cupón se creó correctamente."
+          )
+        }}
+      />
     </div>
   )
 }

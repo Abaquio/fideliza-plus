@@ -26,6 +26,14 @@ export async function auth(req, res, next) {
 
     if (perfilError) throw perfilError;
 
+    // ✅ NUEVO: bloquear requests si el usuario está inactivo
+    if (perfil && perfil.activo === false) {
+      return res.status(403).json({
+        ok: false,
+        message: "Usuario inactivo. Contacta al administrador.",
+      });
+    }
+
     // 3) Rol nombre (opcional)
     let rolNombre = null;
     if (perfil?.rol_id) {

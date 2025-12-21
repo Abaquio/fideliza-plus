@@ -50,6 +50,15 @@ export async function login(req, res, next) {
 
     if (perfilError) throw perfilError;
 
+    // ✅ NUEVO: bloquear login si usuario está inactivo
+    // (solo si existe perfil; si no existe, dejamos el comportamiento actual para no romper flujos)
+    if (perfil && perfil.activo === false) {
+      return res.status(403).json({
+        ok: false,
+        message: "Tu usuario está inactivo. Contacta al administrador.",
+      });
+    }
+
     // 3) Nombre del rol
     let rolNombre = null;
     if (perfil?.rol_id) {

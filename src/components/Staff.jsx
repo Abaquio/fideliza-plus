@@ -4,6 +4,9 @@ import { useEffect, useState } from "react"
 import { Plus, Shield, Mail, Phone, Calendar } from "lucide-react"
 import CrearStaffModal from "./modales/CrearStaffModal"
 
+// ✅ NUEVO (validado)
+import ValidadoCard from "../ui/validado"
+
 function getApiBase() {
   const host = window.location.hostname
   if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
@@ -29,6 +32,11 @@ export default function Staff() {
   const [showModal, setShowModal] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
   const [staff, setStaff] = useState([])
+
+  // ✅ NUEVO: validado toast
+  const [validadoOpen, setValidadoOpen] = useState(false)
+  const [validadoTitle, setValidadoTitle] = useState("Acción realizada")
+  const [validadoMessage, setValidadoMessage] = useState("La operación se completó correctamente.")
 
   const fetchStaff = async () => {
     try {
@@ -64,8 +72,31 @@ export default function Staff() {
     }
   }
 
+  const showValidado = (action) => {
+    if (action === "edit") {
+      setValidadoTitle("Usuario actualizado")
+      setValidadoMessage("Los cambios se guardaron correctamente.")
+    } else {
+      setValidadoTitle("Usuario creado")
+      setValidadoMessage("El nuevo miembro del staff se creó correctamente.")
+    }
+    setValidadoOpen(true)
+
+    // auto cerrar suave (no afecta el diseño)
+    window.clearTimeout(showValidado.__t)
+    showValidado.__t = window.setTimeout(() => setValidadoOpen(false), 3200)
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* ✅ NUEVO: ValidadoCard (se muestra aunque el modal se cierre) */}
+      <ValidadoCard
+        open={validadoOpen}
+        title={validadoTitle}
+        message={validadoMessage}
+        onClose={() => setValidadoOpen(false)}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -193,10 +224,15 @@ export default function Staff() {
       <CrearStaffModal
         open={showModal}
         onClose={() => setShowModal(false)}
-        onSaved={() => {
+        onSaved={(info) => {
+          // mantiene tu comportamiento (cerrar + refrescar)
           setShowModal(false)
           setEditingMember(null)
           fetchStaff()
+
+          // ✅ NUEVO: validado
+          const action = info?.action || (editingMember ? "edit" : "create")
+          showValidado(action)
         }}
         editingMember={editingMember}
       />

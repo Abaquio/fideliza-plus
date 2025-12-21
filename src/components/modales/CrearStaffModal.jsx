@@ -5,6 +5,9 @@ import {
   validarYNormalizarNombre,
 } from "../../utils/validaciones"
 
+// ✅ NUEVO (confirm)
+import ConfirmDialog from "../../ui/confirm"
+
 function getApiBase() {
   const host = window.location.hostname
   if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
@@ -54,7 +57,9 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
   const [sucursales, setSucursales] = useState([])
   const [loadingMeta, setLoadingMeta] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [sendingReset, setSendingReset] = useState(false)
+
+  // ✅ NUEVO: confirm
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   /* ================= RESET / PRELOAD ================= */
   useEffect(() => {
@@ -64,7 +69,7 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
       setForm({
         nombre: editingMember.nombre || "",
         email: editingMember.email || "",
-        password: "",
+        password: "", // en editar: opcional, si viene vacío NO se cambia
         rolId: editingMember.roles?.id || "",
         sucursalId: editingMember.sucursales?.id || "",
         activo: !!editingMember.activo,
@@ -82,6 +87,7 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
 
     setTouched({ nombre: false, email: false, rolId: false })
     setFieldErrors({ nombre: "", email: "", rolId: "" })
+    setConfirmOpen(false)
 
     const fetchMeta = async () => {
       try {
@@ -132,15 +138,19 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
   }
 
   const canSubmit = useMemo(() => {
-    return (
+    const baseOk =
       !fieldErrors.nombre &&
       !fieldErrors.email &&
       !fieldErrors.rolId &&
       form.nombre.trim() &&
       form.email.trim() &&
-      form.rolId &&
-      (isEdit || form.password)
-    )
+      form.rolId
+
+    // En crear: password obligatorio
+    if (!isEdit) return baseOk && !!form.password
+
+    // En editar: password opcional (puede ir vacío)
+    return baseOk
   }, [fieldErrors, form, isEdit])
 
   if (!open) return null
@@ -185,18 +195,9 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
     setFieldErrors((p) => ({ ...p, rolId: validateRolLive(form.rolId) }))
   }
 
-  /* ================= SUBMIT ================= */
+  /* ================= SUBMIT REAL (API) ================= */
 
-  const handleSubmit = async () => {
-    setTouched({ nombre: true, email: true, rolId: true })
-
-    const nombreErr = validateNombreLive(form.nombre)
-    const emailErr = validateEmailLive(form.email)
-    const rolErr = validateRolLive(form.rolId)
-
-    setFieldErrors({ nombre: nombreErr, email: emailErr, rolId: rolErr })
-    if (nombreErr || emailErr || rolErr) return
-
+  const doSubmit = async () => {
     try {
       setSaving(true)
       const API = getApiBase()
@@ -210,7 +211,13 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
         activo: form.activo,
       }
 
-      if (!isEdit) payload.password = form.password
+      // ✅ En crear: password obligatorio
+      // ✅ En editar: password opcional (solo si se escribió algo)
+      if (!isEdit) {
+        payload.password = form.password
+      } else if (form.password?.trim()) {
+        payload.password = form.password
+      }
 
       const url = isEdit
         ? `${API}/api/staff/${editingMember.id}`
@@ -227,8 +234,12 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
         body: JSON.stringify(payload),
       })
 
-      if (data.ok) onSaved?.()
-      else alert(data.message || "No se pudo guardar")
+      if (data.ok) {
+        // ✅ IMPORTANTE: avisamos al padre para que muestre ValidadoCard (y refresque)
+        onSaved?.({ action: isEdit ? "edit" : "create" })
+      } else {
+        alert(data.message || "No se pudo guardar")
+      }
     } catch (e) {
       console.error("Error guardando staff:", e)
       alert("No se pudo guardar (revisa consola)")
@@ -237,25 +248,20 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
     }
   }
 
-  const handleSendReset = async () => {
-    try {
-      setSendingReset(true)
-      const API = getApiBase()
-      const token = localStorage.getItem("token")
+  /* ================= SUBMIT (VALIDA + CONFIRM) ================= */
 
-      const { data } = await safeJsonFetch(
-        `${API}/api/staff/${editingMember.id}/reset-password`,
-        { method: "POST", headers: { Authorization: `Bearer ${token}` } }
-      )
+  const handleSubmit = async () => {
+    setTouched({ nombre: true, email: true, rolId: true })
 
-      if (data.ok) alert("Correo enviado para cambiar contraseña")
-      else alert(data.message || "No se pudo enviar")
-    } catch (e) {
-      console.error(e)
-      alert("Error enviando correo")
-    } finally {
-      setSendingReset(false)
-    }
+    const nombreErr = validateNombreLive(form.nombre)
+    const emailErr = validateEmailLive(form.email)
+    const rolErr = validateRolLive(form.rolId)
+
+    setFieldErrors({ nombre: nombreErr, email: emailErr, rolId: rolErr })
+    if (nombreErr || emailErr || rolErr) return
+
+    // ✅ NUEVO: abrir confirm antes de ejecutar
+    setConfirmOpen(true)
   }
 
   const inputClass = (key) => {
@@ -274,47 +280,67 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
   /* ================= UI ================= */
 
   return (
-    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full animate-scale-in">
-        <h2 className="text-2xl font-bold mb-4">
-          {isEdit ? "Editar Miembro del Staff" : "Agregar Miembro del Staff"}
-        </h2>
+    <>
+      {/* ✅ NUEVO: ConfirmDialog (no cambia tu UI, solo se monta arriba) */}
+      <ConfirmDialog
+        open={confirmOpen}
+        title={isEdit ? "Confirmar edición" : "Confirmar creación"}
+        message={
+          isEdit
+            ? "¿Confirmas guardar los cambios de este miembro del staff?"
+            : "¿Confirmas crear este usuario de staff?"
+        }
+        confirmLabel={isEdit ? "Sí, guardar" : "Sí, crear"}
+        cancelLabel="Cancelar"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          doSubmit()
+        }}
+      />
 
-        <div className="space-y-4">
-          {/* Nombre */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Nombre completo</label>
-            <input
-              type="text"
-              value={form.nombre}
-              onChange={handleChange("nombre")}
-              onBlur={handleNombreBlur}
-              onFocus={() => markTouched("nombre")}
-              className={inputClass("nombre")}
-              placeholder="Ej: Roberto García"
-            />
-            {helper("nombre")}
-          </div>
+      <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full animate-scale-in">
+          <h2 className="text-2xl font-bold mb-4">
+            {isEdit ? "Editar Miembro del Staff" : "Agregar Miembro del Staff"}
+          </h2>
 
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={handleChange("email")}
-              onBlur={handleEmailBlur}
-              onFocus={() => markTouched("email")}
-              className={inputClass("email")}
-              placeholder="usuario@empresa.com"
-            />
-            {helper("email")}
-          </div>
-
-          {/* Password SOLO crear */}
-          {!isEdit && (
+          <div className="space-y-4">
+            {/* Nombre */}
             <div>
-              <label className="block text-sm font-medium mb-2">Contraseña</label>
+              <label className="block text-sm font-medium mb-2">Nombre completo</label>
+              <input
+                type="text"
+                value={form.nombre}
+                onChange={handleChange("nombre")}
+                onBlur={handleNombreBlur}
+                onFocus={() => markTouched("nombre")}
+                className={inputClass("nombre")}
+                placeholder="Ej: Roberto García"
+              />
+              {helper("nombre")}
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={handleChange("email")}
+                onBlur={handleEmailBlur}
+                onFocus={() => markTouched("email")}
+                className={inputClass("email")}
+                placeholder="usuario@empresa.com"
+              />
+              {helper("email")}
+            </div>
+
+            {/* Password (crear y editar) */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Contraseña {isEdit ? "(opcional)" : ""}
+              </label>
               <input
                 type="password"
                 value={form.password}
@@ -322,107 +348,94 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
                   setForm((p) => ({ ...p, password: e.target.value }))
                 }
                 className="w-full px-4 py-2 bg-muted border border-border rounded-lg"
-                placeholder="••••••••"
+                placeholder={isEdit ? "Dejar vacío para no cambiar" : "••••••••"}
               />
             </div>
-          )}
 
-          {/* Rol */}
-          <div>
-            <label className="block text-sm font-medium mb-2 flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              Rol
-            </label>
-            <select
-              value={form.rolId}
-              onChange={handleChange("rolId")}
-              onBlur={handleRolBlur}
-              onFocus={() => markTouched("rolId")}
-              className={inputClass("rolId")}
-              disabled={loadingMeta}
-            >
-              <option value="">
-                {loadingMeta ? "Cargando roles..." : "Seleccionar rol..."}
-              </option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nombre}
+            {/* Rol */}
+            <div>
+              <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                Rol
+              </label>
+              <select
+                value={form.rolId}
+                onChange={handleChange("rolId")}
+                onBlur={handleRolBlur}
+                onFocus={() => markTouched("rolId")}
+                className={inputClass("rolId")}
+                disabled={loadingMeta}
+              >
+                <option value="">
+                  {loadingMeta ? "Cargando roles..." : "Seleccionar rol..."}
                 </option>
-              ))}
-            </select>
-            {helper("rolId")}
-          </div>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nombre}
+                  </option>
+                ))}
+              </select>
+              {helper("rolId")}
+            </div>
 
-          {/* Sucursal */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Sucursal</label>
-            <select
-              value={form.sucursalId}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, sucursalId: e.target.value }))
-              }
-              className="w-full px-4 py-2 bg-muted border border-border rounded-lg"
-              disabled={loadingMeta}
-            >
-              <option value="">
-                {loadingMeta ? "Cargando sucursales..." : "Seleccionar sucursal..."}
-              </option>
-              {sucursales.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nombre}
+            {/* Sucursal */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Sucursal</label>
+              <select
+                value={form.sucursalId}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, sucursalId: e.target.value }))
+                }
+                className="w-full px-4 py-2 bg-muted border border-border rounded-lg"
+                disabled={loadingMeta}
+              >
+                <option value="">
+                  {loadingMeta ? "Cargando sucursales..." : "Seleccionar sucursal..."}
                 </option>
-              ))}
-            </select>
-          </div>
+                {sucursales.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Activo */}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={form.activo}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, activo: e.target.checked }))
-              }
-              className="w-4 h-4 rounded border-border"
-            />
-            <span className="text-sm">Usuario activo</span>
-          </div>
+            {/* Activo */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={form.activo}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, activo: e.target.checked }))
+                }
+                className="w-4 h-4 rounded border-border"
+              />
+              <span className="text-sm">Usuario activo</span>
+            </div>
 
-          {/* Acciones */}
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={onClose}
-              className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={!canSubmit || saving}
-              className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-60"
-            >
-              {saving
-                ? "Guardando..."
-                : isEdit
-                ? "Guardar Cambios"
-                : "Crear Usuario"}
-            </button>
+            {/* Acciones */}
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={onClose}
+                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={!canSubmit || saving}
+                className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-60"
+              >
+                {saving
+                  ? "Guardando..."
+                  : isEdit
+                  ? "Guardar Cambios"
+                  : "Crear Usuario"}
+              </button>
+            </div>
           </div>
-
-          {/* Reset password SOLO editar */}
-          {isEdit && (
-            <button
-              onClick={handleSendReset}
-              disabled={sendingReset}
-              className="w-full px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg"
-            >
-              {sendingReset
-                ? "Enviando correo..."
-                : "Enviar correo para cambiar contraseña"}
-            </button>
-          )}
         </div>
       </div>
-    </div>
+    </>
   )
 }
