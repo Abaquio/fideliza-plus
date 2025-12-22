@@ -25,14 +25,22 @@ export default function Topbar({ user, toggleSidebar }) {
     navigate("/perfil")
   }
 
+  const clearSessionEverywhere = () => {
+    // ✅ Limpia ambos, porque ahora el token puede estar en sessionStorage
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    sessionStorage.removeItem("token")
+    sessionStorage.removeItem("user")
+  }
+
   const handleLogout = () => {
     setShowDropdown(false)
 
-    localStorage.removeItem("token")
-    localStorage.removeItem("user")
+    clearSessionEverywhere()
 
-    // ✅ avisa al App.jsx que cambió la sesión (misma pestaña)
+    // ✅ Dispara eventos "compatibles" por si App escucha uno u otro
     window.dispatchEvent(new Event("auth-changed"))
+    window.dispatchEvent(new Event("auth:logout"))
 
     navigate("/login", { replace: true })
   }

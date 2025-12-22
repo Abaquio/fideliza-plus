@@ -13,9 +13,11 @@ const router = Router();
 
 router.use(authMiddleware);
 
-// Puedes ajustar roles después si quieres (por ahora, seguro):
-router.get("/", requireRoles("Administrador"), listarCupones);
-router.get("/meta", requireRoles("Administrador"), metaDescuentos);
+// ✅ Lectura: Administrador + Vendedor
+router.get("/", requireRoles("Administrador", "Vendedor"), listarCupones);
+router.get("/meta", requireRoles("Administrador", "Vendedor"), metaDescuentos);
+
+// ✅ Escritura: solo Administrador
 router.post("/", requireRoles("Administrador"), crearCupon);
 router.put("/:id", requireRoles("Administrador"), actualizarCupon);
 router.delete("/:id", requireRoles("Administrador"), eliminarCupon);

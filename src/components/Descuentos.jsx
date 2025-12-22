@@ -13,8 +13,28 @@ function getApiBase() {
   return "https://fideliza-plus.onrender.com"
 }
 
+function getToken() {
+  return sessionStorage.getItem("token") || localStorage.getItem("token") || ""
+}
+
+function clearTokenEverywhere() {
+  sessionStorage.removeItem("token")
+  localStorage.removeItem("token")
+}
+
+function notifyLogout() {
+  window.dispatchEvent(new Event("auth:logout"))
+}
+
 async function safeJsonFetch(url, options) {
   const res = await fetch(url, options)
+
+  if (res.status === 401) {
+    const err = new Error("UNAUTHORIZED")
+    err.status = 401
+    throw err
+  }
+
   const ct = res.headers.get("content-type") || ""
   if (!ct.includes("application/json")) {
     const text = await res.text()
@@ -49,6 +69,11 @@ export default function Descuentos() {
   const [validadoTitle, setValidadoTitle] = useState("")
   const [validadoMessage, setValidadoMessage] = useState("")
 
+  const handleUnauthorized = () => {
+    clearTokenEverywhere()
+    notifyLogout()
+  }
+
   const showValidado = (title, message) => {
     setValidadoTitle(title)
     setValidadoMessage(message)
@@ -60,12 +85,17 @@ export default function Descuentos() {
   const fetchCupones = async () => {
     try {
       const API = getApiBase()
-      const token = localStorage.getItem("token")
+      const token = getToken()
+
       const { data } = await safeJsonFetch(`${API}/api/descuentos`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (data.ok) setCupones(data.data || [])
     } catch (e) {
+      if (e?.status === 401 || e?.message === "UNAUTHORIZED") {
+        handleUnauthorized()
+        return
+      }
       console.error("Error cargando cupones:", e)
     }
   }
@@ -76,9 +106,8 @@ export default function Descuentos() {
 
   const stats = useMemo(() => {
     const activos = cupones.filter((c) => String(c.estado).toLowerCase() === "activo").length
-    const usados = cupones.filter(
-      (c) => !!c.compra_id || String(c.estado).toLowerCase() === "usado"
-    ).length
+    const usados = cupones.filter((c) => !!c.compra_id || String(c.estado).toLowerCase() === "usado")
+      .length
     const porVencer = cupones.filter((c) => {
       if (!c.vence_en) return false
       const d = new Date(c.vence_en)
@@ -93,7 +122,7 @@ export default function Descuentos() {
   const handleDelete = async (cupon) => {
     try {
       const API = getApiBase()
-      const token = localStorage.getItem("token")
+      const token = getToken()
 
       const { data } = await safeJsonFetch(`${API}/api/descuentos/${cupon.id}`, {
         method: "DELETE",
@@ -108,6 +137,10 @@ export default function Descuentos() {
       fetchCupones()
       showValidado("Cupón eliminado", "El cupón se eliminó correctamente.")
     } catch (e) {
+      if (e?.status === 401 || e?.message === "UNAUTHORIZED") {
+        handleUnauthorized()
+        return
+      }
       console.error(e)
       alert("No se pudo eliminar (revisa consola)")
     }
@@ -144,9 +177,7 @@ export default function Descuentos() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold mb-2">Descuentos y Cupones</h1>
-          <p className="text-muted-foreground">
-            Crea y gestiona cupones canjeables por puntos
-          </p>
+          <p className="text-muted-foreground">Crea y gestiona cupones canjeables por puntos</p>
         </div>
         <button
           onClick={() => {
@@ -202,10 +233,7 @@ export default function Descuentos() {
           const isExpired = status === "expirado"
           const isActive = status === "activo"
 
-          const createdBy =
-            cupon.usuarios?.nombre ||
-            cupon.usuarios?.email ||
-            "—"
+          const createdBy = cupon.usuarios?.nombre || cupon.usuarios?.email || "—"
 
           const usado = !!cupon.compra_id || status === "usado"
           const usedCount = usado ? 1 : 0
@@ -230,9 +258,7 @@ export default function Descuentos() {
                     <h3 className="text-xl font-bold font-mono">{cupon.codigo}</h3>
                     <span
                       className={`inline-block px-2 py-0.5 text-xs rounded-full ${
-                        isActive
-                          ? "bg-primary/10 text-primary"
-                          : "bg-muted text-muted-foreground"
+                        isActive ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
                       }`}
                     >
                       {isActive ? "Activo" : cupon.estado}
@@ -256,9 +282,7 @@ export default function Descuentos() {
 
                 <div className="bg-muted/50 rounded-lg p-3">
                   <p className="text-xs text-muted-foreground mb-1">Costo</p>
-                  <p className="text-lg font-bold">
-                    {Number(cupon.costo_puntos || 0)} pts
-                  </p>
+                  <p className="text-lg font-bold">{Number(cupon.costo_puntos || 0)} pts</p>
                 </div>
               </div>
 

@@ -48,8 +48,13 @@ export default function Login() {
         return
       }
 
-      localStorage.setItem("token", data.token)
-      localStorage.setItem("user", JSON.stringify(data.user || {}))
+      // ✅ AHORA: sesión solo por pestaña (sessionStorage)
+      sessionStorage.setItem("token", data.token)
+      sessionStorage.setItem("user", JSON.stringify(data.user || {}))
+
+      // (por si antes quedaba algo viejo)
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
 
       // avisa al App.jsx que cambió la sesión
       window.dispatchEvent(new Event("auth-changed"))
@@ -190,8 +195,12 @@ const StyledWrapper = styled.div`
   }
 
   @keyframes blink {
-    0% { background: #0ef; }
-    25% { background: #2c4766; }
+    0% {
+      background: #0ef;
+    }
+    25% {
+      background: #2c4766;
+    }
   }
 
   .login-box {

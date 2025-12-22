@@ -13,10 +13,31 @@ function getApiBase() {
   return "https://fideliza-plus.onrender.com"
 }
 
+function getToken() {
+  return sessionStorage.getItem("token") || localStorage.getItem("token") || ""
+}
+
+function clearTokenEverywhere() {
+  sessionStorage.removeItem("token")
+  localStorage.removeItem("token")
+}
+
+function notifyLogout() {
+  // Para que tu App pueda reaccionar si ya lo escuchas
+  window.dispatchEvent(new Event("auth:logout"))
+}
+
 async function safeJsonFetch(url, options) {
   const res = await fetch(url, options)
-  const ct = res.headers.get("content-type") || ""
 
+  // ✅ Manejo directo de 401 (aunque responda HTML o lo que sea)
+  if (res.status === 401) {
+    const err = new Error("UNAUTHORIZED")
+    err.status = 401
+    throw err
+  }
+
+  const ct = res.headers.get("content-type") || ""
   if (!ct.includes("application/json")) {
     const text = await res.text()
     throw new Error(
@@ -38,10 +59,15 @@ export default function Staff() {
   const [validadoTitle, setValidadoTitle] = useState("Acción realizada")
   const [validadoMessage, setValidadoMessage] = useState("La operación se completó correctamente.")
 
+  const handleUnauthorized = () => {
+    clearTokenEverywhere()
+    notifyLogout()
+  }
+
   const fetchStaff = async () => {
     try {
       const API = getApiBase()
-      const token = localStorage.getItem("token")
+      const token = getToken()
 
       const url = `${API}/api/staff`
 
@@ -51,6 +77,10 @@ export default function Staff() {
 
       if (data.ok) setStaff(data.data || [])
     } catch (err) {
+      if (err?.status === 401 || err?.message === "UNAUTHORIZED") {
+        handleUnauthorized()
+        return
+      }
       console.error("Error cargando staff", err)
     }
   }
@@ -82,14 +112,12 @@ export default function Staff() {
     }
     setValidadoOpen(true)
 
-    // auto cerrar suave (no afecta el diseño)
     window.clearTimeout(showValidado.__t)
     showValidado.__t = window.setTimeout(() => setValidadoOpen(false), 3200)
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* ✅ NUEVO: ValidadoCard (se muestra aunque el modal se cierre) */}
       <ValidadoCard
         open={validadoOpen}
         title={validadoTitle}
@@ -225,12 +253,10 @@ export default function Staff() {
         open={showModal}
         onClose={() => setShowModal(false)}
         onSaved={(info) => {
-          // mantiene tu comportamiento (cerrar + refrescar)
           setShowModal(false)
           setEditingMember(null)
           fetchStaff()
 
-          // ✅ NUEVO: validado
           const action = info?.action || (editingMember ? "edit" : "create")
           showValidado(action)
         }}

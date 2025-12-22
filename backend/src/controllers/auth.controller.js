@@ -39,6 +39,8 @@ export async function login(req, res, next) {
     }
 
     const accessToken = data.session.access_token;
+    const refreshToken = data.session.refresh_token; // ✅ NUEVO
+    const expiresAt = data.session.expires_at ?? null; // ✅ NUEVO (opcional)
     const authUser = data.user;
 
     // 2) Perfil desde public.usuarios
@@ -50,7 +52,7 @@ export async function login(req, res, next) {
 
     if (perfilError) throw perfilError;
 
-    // ✅ NUEVO: bloquear login si usuario está inactivo
+    // ✅ bloquear login si usuario está inactivo
     // (solo si existe perfil; si no existe, dejamos el comportamiento actual para no romper flujos)
     if (perfil && perfil.activo === false) {
       return res.status(403).json({
@@ -71,9 +73,12 @@ export async function login(req, res, next) {
       rolNombre = rolRow?.nombre ?? null;
     }
 
+    // ✅ MISMA RESPUESTA DE SIEMPRE + refresh_token
     return res.json({
       ok: true,
       token: accessToken,
+      refresh_token: refreshToken, // ✅ NUEVO
+      expires_at: expiresAt, // ✅ NUEVO
       user: {
         auth_uid: authUser.id,
         email: authUser.email,
@@ -82,6 +87,45 @@ export async function login(req, res, next) {
         sucursal_id: perfil?.sucursal_id ?? null,
         perfil_id: perfil?.id ?? null,
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ✅ NUEVO: renovar access_token usando refresh_token (evita 401 después de un rato)
+export async function refresh(req, res, next) {
+  try {
+    const { refresh_token } = req.body || {};
+
+    if (!refresh_token) {
+      return res.status(400).json({ ok: false, message: "Falta refresh_token" });
+    }
+
+    const supabaseAuth = getSupabaseAuthClient();
+    if (!supabaseAuth) {
+      return res.status(503).json({
+        ok: false,
+        message: "Refresh no habilitado: falta SUPABASE_ANON_KEY en backend/.env",
+      });
+    }
+
+    const { data, error } = await supabaseAuth.auth.refreshSession({
+      refresh_token,
+    });
+
+    if (error || !data?.session) {
+      return res.status(401).json({
+        ok: false,
+        message: "No se pudo renovar la sesión. Vuelve a iniciar sesión.",
+      });
+    }
+
+    return res.json({
+      ok: true,
+      token: data.session.access_token,
+      refresh_token: data.session.refresh_token, // puede rotar
+      expires_at: data.session.expires_at ?? null,
     });
   } catch (err) {
     next(err);

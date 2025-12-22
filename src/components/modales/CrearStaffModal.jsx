@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Shield } from "lucide-react"
-import {
-  validarEmail,
-  validarYNormalizarNombre,
-} from "../../utils/validaciones"
-
-// ✅ NUEVO (confirm)
+import { validarEmail, validarYNormalizarNombre } from "../../utils/validaciones"
 import ConfirmDialog from "../../ui/confirm"
 
 function getApiBase() {
@@ -14,10 +9,20 @@ function getApiBase() {
   return "https://fideliza-plus.onrender.com"
 }
 
+function getToken() {
+  return sessionStorage.getItem("token") || localStorage.getItem("token") || ""
+}
+
 async function safeJsonFetch(url, options) {
   const res = await fetch(url, options)
-  const ct = res.headers.get("content-type") || ""
 
+  if (res.status === 401) {
+    const err = new Error("UNAUTHORIZED")
+    err.status = 401
+    throw err
+  }
+
+  const ct = res.headers.get("content-type") || ""
   if (!ct.includes("application/json")) {
     const text = await res.text()
     throw new Error(
@@ -58,10 +63,8 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
   const [loadingMeta, setLoadingMeta] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // ✅ NUEVO: confirm
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  /* ================= RESET / PRELOAD ================= */
   useEffect(() => {
     if (!open) return
 
@@ -69,7 +72,7 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
       setForm({
         nombre: editingMember.nombre || "",
         email: editingMember.email || "",
-        password: "", // en editar: opcional, si viene vacío NO se cambia
+        password: "",
         rolId: editingMember.roles?.id || "",
         sucursalId: editingMember.sucursales?.id || "",
         activo: !!editingMember.activo,
@@ -93,7 +96,7 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
       try {
         setLoadingMeta(true)
         const API = getApiBase()
-        const token = localStorage.getItem("token")
+        const token = getToken()
 
         const { data } = await safeJsonFetch(`${API}/api/staff/meta`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -113,8 +116,6 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
     fetchMeta()
   }, [open, editingMember])
 
-  /* ================= VALIDACIONES EN VIVO ================= */
-
   const validateNombreLive = (value) => {
     if (!value?.trim()) return "El nombre es obligatorio"
     try {
@@ -127,9 +128,7 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
 
   const validateEmailLive = (value) => {
     if (!value?.trim()) return "El email es obligatorio"
-    return validarEmail(value.trim())
-      ? ""
-      : "Email inválido (falta @ o dominio)"
+    return validarEmail(value.trim()) ? "" : "Email inválido (falta @ o dominio)"
   }
 
   const validateRolLive = (value) => {
@@ -146,19 +145,13 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
       form.email.trim() &&
       form.rolId
 
-    // En crear: password obligatorio
     if (!isEdit) return baseOk && !!form.password
-
-    // En editar: password opcional (puede ir vacío)
     return baseOk
   }, [fieldErrors, form, isEdit])
 
   if (!open) return null
 
-  /* ================= HANDLERS ================= */
-
-  const markTouched = (key) =>
-    setTouched((p) => ({ ...p, [key]: true }))
+  const markTouched = (key) => setTouched((p) => ({ ...p, [key]: true }))
 
   const handleChange = (key) => (e) => {
     const value = e.target.value
@@ -166,12 +159,9 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
 
     if (!touched[key]) return
 
-    if (key === "nombre")
-      setFieldErrors((p) => ({ ...p, nombre: validateNombreLive(value) }))
-    if (key === "email")
-      setFieldErrors((p) => ({ ...p, email: validateEmailLive(value) }))
-    if (key === "rolId")
-      setFieldErrors((p) => ({ ...p, rolId: validateRolLive(value) }))
+    if (key === "nombre") setFieldErrors((p) => ({ ...p, nombre: validateNombreLive(value) }))
+    if (key === "email") setFieldErrors((p) => ({ ...p, email: validateEmailLive(value) }))
+    if (key === "rolId") setFieldErrors((p) => ({ ...p, rolId: validateRolLive(value) }))
   }
 
   const handleNombreBlur = () => {
@@ -195,13 +185,11 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
     setFieldErrors((p) => ({ ...p, rolId: validateRolLive(form.rolId) }))
   }
 
-  /* ================= SUBMIT REAL (API) ================= */
-
   const doSubmit = async () => {
     try {
       setSaving(true)
       const API = getApiBase()
-      const token = localStorage.getItem("token")
+      const token = getToken()
 
       const payload = {
         nombre: validarYNormalizarNombre(form.nombre),
@@ -211,18 +199,10 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
         activo: form.activo,
       }
 
-      // ✅ En crear: password obligatorio
-      // ✅ En editar: password opcional (solo si se escribió algo)
-      if (!isEdit) {
-        payload.password = form.password
-      } else if (form.password?.trim()) {
-        payload.password = form.password
-      }
+      if (!isEdit) payload.password = form.password
+      else if (form.password?.trim()) payload.password = form.password
 
-      const url = isEdit
-        ? `${API}/api/staff/${editingMember.id}`
-        : `${API}/api/staff`
-
+      const url = isEdit ? `${API}/api/staff/${editingMember.id}` : `${API}/api/staff`
       const method = isEdit ? "PUT" : "POST"
 
       const { data } = await safeJsonFetch(url, {
@@ -235,7 +215,6 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
       })
 
       if (data.ok) {
-        // ✅ IMPORTANTE: avisamos al padre para que muestre ValidadoCard (y refresque)
         onSaved?.({ action: isEdit ? "edit" : "create" })
       } else {
         alert(data.message || "No se pudo guardar")
@@ -248,8 +227,6 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
     }
   }
 
-  /* ================= SUBMIT (VALIDA + CONFIRM) ================= */
-
   const handleSubmit = async () => {
     setTouched({ nombre: true, email: true, rolId: true })
 
@@ -260,7 +237,6 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
     setFieldErrors({ nombre: nombreErr, email: emailErr, rolId: rolErr })
     if (nombreErr || emailErr || rolErr) return
 
-    // ✅ NUEVO: abrir confirm antes de ejecutar
     setConfirmOpen(true)
   }
 
@@ -277,11 +253,8 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
       <p className="mt-1 text-xs text-destructive">{fieldErrors[key]}</p>
     ) : null
 
-  /* ================= UI ================= */
-
   return (
     <>
-      {/* ✅ NUEVO: ConfirmDialog (no cambia tu UI, solo se monta arriba) */}
       <ConfirmDialog
         open={confirmOpen}
         title={isEdit ? "Confirmar edición" : "Confirmar creación"}
@@ -306,7 +279,6 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
           </h2>
 
           <div className="space-y-4">
-            {/* Nombre */}
             <div>
               <label className="block text-sm font-medium mb-2">Nombre completo</label>
               <input
@@ -321,7 +293,6 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
               {helper("nombre")}
             </div>
 
-            {/* Email */}
             <div>
               <label className="block text-sm font-medium mb-2">Email</label>
               <input
@@ -336,7 +307,6 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
               {helper("email")}
             </div>
 
-            {/* Password (crear y editar) */}
             <div>
               <label className="block text-sm font-medium mb-2">
                 Contraseña {isEdit ? "(opcional)" : ""}
@@ -344,15 +314,12 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
               <input
                 type="password"
                 value={form.password}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, password: e.target.value }))
-                }
+                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
                 className="w-full px-4 py-2 bg-muted border border-border rounded-lg"
                 placeholder={isEdit ? "Dejar vacío para no cambiar" : "••••••••"}
               />
             </div>
 
-            {/* Rol */}
             <div>
               <label className="block text-sm font-medium mb-2 flex items-center gap-2">
                 <Shield className="w-4 h-4" />
@@ -366,9 +333,7 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
                 className={inputClass("rolId")}
                 disabled={loadingMeta}
               >
-                <option value="">
-                  {loadingMeta ? "Cargando roles..." : "Seleccionar rol..."}
-                </option>
+                <option value="">{loadingMeta ? "Cargando roles..." : "Seleccionar rol..."}</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.nombre}
@@ -378,14 +343,11 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
               {helper("rolId")}
             </div>
 
-            {/* Sucursal */}
             <div>
               <label className="block text-sm font-medium mb-2">Sucursal</label>
               <select
                 value={form.sucursalId}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, sucursalId: e.target.value }))
-                }
+                onChange={(e) => setForm((p) => ({ ...p, sucursalId: e.target.value }))}
                 className="w-full px-4 py-2 bg-muted border border-border rounded-lg"
                 disabled={loadingMeta}
               >
@@ -400,25 +362,18 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
               </select>
             </div>
 
-            {/* Activo */}
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={form.activo}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, activo: e.target.checked }))
-                }
+                onChange={(e) => setForm((p) => ({ ...p, activo: e.target.checked }))}
                 className="w-4 h-4 rounded border-border"
               />
               <span className="text-sm">Usuario activo</span>
             </div>
 
-            {/* Acciones */}
             <div className="flex gap-3 pt-4">
-              <button
-                onClick={onClose}
-                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg"
-              >
+              <button onClick={onClose} className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg">
                 Cancelar
               </button>
               <button
@@ -426,11 +381,7 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
                 disabled={!canSubmit || saving}
                 className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-60"
               >
-                {saving
-                  ? "Guardando..."
-                  : isEdit
-                  ? "Guardar Cambios"
-                  : "Crear Usuario"}
+                {saving ? "Guardando..." : isEdit ? "Guardar Cambios" : "Crear Usuario"}
               </button>
             </div>
           </div>

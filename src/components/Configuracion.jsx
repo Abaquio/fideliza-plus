@@ -5,6 +5,10 @@ import { Store, DollarSign } from "lucide-react"
 import ConfirmDialog from "../ui/confirm"
 import ValidadoCard from "../ui/validado"
 
+function getToken() {
+  return sessionStorage.getItem("token") || localStorage.getItem("token") || ""
+}
+
 export default function Configuracion() {
   /**
    * API_BASE blindado (no rompe prod/local)
@@ -17,8 +21,6 @@ export default function Configuracion() {
     const raw = (import.meta?.env?.VITE_API_URL || fallback).replace(/\/$/, "")
     return raw.endsWith("/api") ? raw : `${raw}/api`
   }, [])
-
-  const token = useMemo(() => localStorage.getItem("token") || "", [])
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -53,6 +55,8 @@ export default function Configuracion() {
     setLoading(true)
     setErrorMsg("")
     try {
+      const token = getToken()
+
       const res = await fetch(`${API_BASE}/configuracion`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -118,6 +122,8 @@ export default function Configuracion() {
     setErrorMsg("")
 
     try {
+      const token = getToken()
+
       // Guardamos la configuración completa (simple, robusto, no rompe nada)
       const payload = {
         tienda_nombre: form.tienda_nombre.trim(),

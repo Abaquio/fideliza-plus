@@ -26,10 +26,10 @@ const PATH_TO_VIEW = {
 }
 
 function readSession() {
-  const token = localStorage.getItem("token")
+  const token = sessionStorage.getItem("token")
   let user = null
   try {
-    user = JSON.parse(localStorage.getItem("user") || "null")
+    user = JSON.parse(sessionStorage.getItem("user") || "null")
   } catch {
     user = null
   }
@@ -66,14 +66,13 @@ export default function App() {
   const [{ token, user }, setSession] = useState(() => readSession())
   const isAuthed = !!token
 
-  // Sidebar active al recargar
   useEffect(() => {
     const viewFromPath = PATH_TO_VIEW[location.pathname]
     if (viewFromPath && viewFromPath !== currentView) setCurrentView(viewFromPath)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
 
-  // ✅ actualiza sesión si cambia localStorage en otra pestaña
+  // ✅ dejamos este listener, no rompe nada (pero sessionStorage no se comparte entre pestañas)
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === "token" || e.key === "user") setSession(readSession())
@@ -82,7 +81,7 @@ export default function App() {
     return () => window.removeEventListener("storage", onStorage)
   }, [])
 
-  // ✅ actualiza sesión en esta misma pestaña (login/logout)
+  // ✅ este es el importante: login/logout en la misma pestaña
   useEffect(() => {
     const onAuthChanged = () => setSession(readSession())
     window.addEventListener("auth-changed", onAuthChanged)

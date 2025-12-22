@@ -3,15 +3,50 @@
 import { LayoutDashboard, Users, ShoppingCart, Tag, UserCog, Settings, X } from "lucide-react"
 import { NavLink } from "react-router-dom"
 
+function getStoredUser() {
+  try {
+    const raw = sessionStorage.getItem("user") || localStorage.getItem("user")
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function resolveRoleName(user) {
+  // Trata varias formas comunes:
+  // user.rol, user.role, user.rol_nombre, user.roles.nombre, user.rol.nombre, etc.
+  const candidates = [
+    user?.rol,
+    user?.role,
+    user?.rol_nombre,
+    user?.rolNombre,
+    user?.roles?.nombre,
+    user?.rol?.nombre,
+    user?.usuario?.roles?.nombre,
+  ].filter(Boolean)
+
+  const role = String(candidates[0] || "").trim()
+  return role
+}
+
 export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }) {
+  const storedUser = getStoredUser()
+  const roleName = resolveRoleName(storedUser)
+
+  const isVendedor = roleName.toLowerCase() === "vendedor"
+  const isAdmin = roleName.toLowerCase() === "administrador" || roleName.toLowerCase() === "admin"
+
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
     { id: "clientes", label: "Clientes", icon: Users, to: "/clientes" },
     { id: "compras", label: "Compras / Movimientos", icon: ShoppingCart, to: "/compras" },
     { id: "descuentos", label: "Descuentos", icon: Tag, to: "/descuentos" },
-    { id: "staff", label: "Staff", icon: UserCog, to: "/staff" },
-    { id: "configuracion", label: "Configuración", icon: Settings, to: "/configuracion" },
-  ]
+
+    // ✅ Restricción: vendedor NO ve staff/configuración
+    { id: "staff", label: "Staff", icon: UserCog, to: "/staff", hidden: isVendedor },
+    { id: "configuracion", label: "Configuración", icon: Settings, to: "/configuracion", hidden: isVendedor },
+  ].filter((i) => !i.hidden)
 
   return (
     <>

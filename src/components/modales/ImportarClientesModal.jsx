@@ -1,15 +1,21 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { RefreshCw, Trash2, Link2, Plus } from "lucide-react"
+import { RefreshCw, Trash2, Link2, Plus, Eye, Pencil, Save, X } from "lucide-react"
 
 import ConfirmDialog from "../../ui/confirm"
 import ValidadoCard from "../../ui/validado"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
 
+// ✅ FIX: token desde sessionStorage (y fallback a localStorage)
 function getAuthToken() {
-  return localStorage.getItem("token") || localStorage.getItem("authToken") || ""
+  return (
+    sessionStorage.getItem("token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    ""
+  )
 }
 
 function formatWhen(ts) {
@@ -24,7 +30,7 @@ function isValidGoogleUrl(value) {
   return value.includes("drive.google.com") || value.includes("docs.google.com")
 }
 
-// ✅ NUEVO: reconocer fuente interna (por flag o por nombre)
+// ✅ reconocer fuente interna (por flag o por nombre)
 function isInternalSource(source) {
   const name = String(source?.nombre || "").trim().toLowerCase()
   return !!source?.es_interna || name === "medical season"
@@ -43,6 +49,12 @@ export default function ImportarClientesModal({
   const [loadingSources, setLoadingSources] = useState(false)
   const [working, setWorking] = useState(false)
 
+  // ✅ NUEVO: expandir / editar fuente
+  const [expandedId, setExpandedId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editNombre, setEditNombre] = useState("")
+  const [editUrl, setEditUrl] = useState("")
+
   // Confirm
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState("Confirmar acción")
@@ -57,7 +69,8 @@ export default function ImportarClientesModal({
   const [validadoTitle, setValidadoTitle] = useState("Acción realizada")
   const [validadoMessage, setValidadoMessage] = useState("Operación completada correctamente.")
 
-  const token = useMemo(() => getAuthToken(), [])
+  // ✅ IMPORTANTE: no dejes el token pegado si cambia
+  const token = useMemo(() => getAuthToken(), [open])
 
   function showValidado(title, message) {
     setValidadoTitle(title || "Acción realizada")
@@ -104,6 +117,13 @@ export default function ImportarClientesModal({
       setConfirmOpen(false)
       setPendingAction(null)
       setPendingCancelAction(null)
+
+      // ✅ reset expand/editar al abrir
+      setExpandedId(null)
+      setEditingId(null)
+      setEditNombre("")
+      setEditUrl("")
+
       fetchFuentes()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,7 +133,7 @@ export default function ImportarClientesModal({
     if (e.target === e.currentTarget) onClose?.()
   }
 
-  // ✅ NUEVO: detectar nombre duplicado (case-insensitive)
+  // ✅ detectar nombre duplicado (case-insensitive) para crear
   const nombreDuplicado = useMemo(() => {
     const n = nombre.trim().toLowerCase()
     if (!n) return false
@@ -121,7 +141,6 @@ export default function ImportarClientesModal({
   }, [nombre, sources])
 
   const canAdd = useMemo(() => {
-    // mantenemos tu lógica, pero sumamos "no duplicado"
     return nombre.trim().length > 0 && url.trim().length > 0 && !nombreDuplicado
   }, [nombre, url, nombreDuplicado])
 
@@ -204,7 +223,6 @@ export default function ImportarClientesModal({
 
       const data = await res.json().catch(() => ({}))
 
-      // ✅ NUEVO: mensaje amigable si la restricción UNIQUE revienta
       if (!res.ok) {
         const msg = String(data?.message || "No se pudo crear la fuente")
         const looksDuplicate =
@@ -213,9 +231,7 @@ export default function ImportarClientesModal({
           msg.toLowerCase().includes("unique") ||
           msg.toLowerCase().includes("23505")
 
-        if (looksDuplicate) {
-          throw new Error("Ya existe una fuente con ese nombre. Usa otro nombre.")
-        }
+        if (looksDuplicate) throw new Error("Ya existe una fuente con ese nombre. Usa otro nombre.")
         throw new Error(msg)
       }
 
@@ -253,10 +269,7 @@ export default function ImportarClientesModal({
     const u = url.trim()
 
     if (!n) return setError("Debes ingresar un nombre para la fuente")
-
-    // ✅ NUEVO: duplicado en el front (por índice UNIQUE)
     if (nombreDuplicado) return setError("Ya existe una fuente con ese nombre. Usa otro nombre.")
-
     if (!u) return setError("Debes ingresar un enlace")
     if (!isValidGoogleUrl(u)) return setError("El enlace debe ser de Google Drive/Sheets")
 
@@ -271,7 +284,6 @@ export default function ImportarClientesModal({
   }
 
   const handleRecargar = async (source) => {
-    // ✅ NUEVO: si es interna, no permitir
     if (isInternalSource(source)) {
       return showValidado("Acción no disponible", "Esta fuente es interna del sistema y no se puede recargar.")
     }
@@ -338,7 +350,6 @@ export default function ImportarClientesModal({
   }
 
   const handleEliminar = (source) => {
-    // ✅ NUEVO: si es interna, no permitir
     if (isInternalSource(source)) {
       return showValidado("Acción no disponible", "Esta fuente es interna del sistema y no se puede eliminar.")
     }
@@ -351,6 +362,115 @@ export default function ImportarClientesModal({
       action: () => doEliminarFuente(source),
       onCancelAction: null,
     })
+  }
+
+  // ✅ NUEVO: expandir panel
+  const toggleExpand = (source) => {
+    const next = expandedId === source.id ? null : source.id
+    setExpandedId(next)
+
+    // si colapsa, salir de edición
+    if (next === null) {
+      setEditingId(null)
+      setEditNombre("")
+      setEditUrl("")
+    }
+  }
+
+  // ✅ NUEVO: iniciar edición (desde panel)
+  const startEdit = (source) => {
+    if (isInternalSource(source)) {
+      return showValidado("Acción no disponible", "Esta fuente es interna del sistema y no se puede editar.")
+    }
+    setEditingId(source.id)
+    setEditNombre(String(source?.nombre || ""))
+    setEditUrl(String(source?.url || ""))
+    setError("")
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditNombre("")
+    setEditUrl("")
+    setError("")
+  }
+
+  // ✅ NUEVO: duplicado al editar (ignorando el mismo id)
+  const editNombreDuplicado = useMemo(() => {
+    if (!editingId) return false
+    const n = editNombre.trim().toLowerCase()
+    if (!n) return false
+    return (sources || []).some((s) => {
+      if (s.id === editingId) return false
+      return String(s?.nombre || "").trim().toLowerCase() === n
+    })
+  }, [editNombre, editingId, sources])
+
+  // ✅ NUEVO: guardar edición (requiere endpoint PUT)
+  async function doGuardarEdicion(source) {
+    const n = editNombre.trim()
+    const u = editUrl.trim()
+
+    if (!n) return setError("El nombre no puede estar vacío.")
+    if (editNombreDuplicado) return setError("Ya existe una fuente con ese nombre. Usa otro nombre.")
+    if (!u) return setError("El enlace no puede estar vacío.")
+    if (!isValidGoogleUrl(u)) return setError("El enlace debe ser de Google Drive/Sheets")
+
+    setWorking(true)
+    setError("")
+    try {
+      const res = await fetch(`${API_URL}/api/clientes/fuentes/${source.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ nombre: n, url: u }),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const msg = String(data?.message || "No se pudo actualizar la fuente")
+        const looksDuplicate =
+          msg.toLowerCase().includes("duplicate") ||
+          msg.toLowerCase().includes("duplic") ||
+          msg.toLowerCase().includes("unique") ||
+          msg.toLowerCase().includes("23505")
+        if (looksDuplicate) throw new Error("Ya existe una fuente con ese nombre. Usa otro nombre.")
+        throw new Error(msg)
+      }
+
+      await fetchFuentes()
+      onAfterChange?.()
+      setEditingId(null)
+      setEditNombre("")
+      setEditUrl("")
+      showValidado("Fuente actualizada", "Los cambios se guardaron correctamente.")
+    } catch (e) {
+      setError(e.message || "Error actualizando fuente")
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const pedirGuardarEdicion = (source) => {
+    openConfirm({
+      title: "Guardar cambios",
+      message: `¿Guardar cambios en la fuente "${source.nombre}"?`,
+      label: "Guardar",
+      cancelText: "Cancelar",
+      action: () => doGuardarEdicion(source),
+      onCancelAction: null,
+    })
+  }
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text || "")
+      showValidado("Copiado", "Se copió el enlace al portapapeles.")
+    } catch {
+      // sin romper nada si el navegador bloquea clipboard
+    }
   }
 
   if (!open) return null
@@ -379,6 +499,7 @@ export default function ImportarClientesModal({
         )}
 
         <div className="space-y-4">
+          {/* Crear fuente */}
           <div className="bg-muted/40 border border-border rounded-lg p-3 space-y-3">
             <div>
               <label className="block text-sm font-medium mb-2">Nombre de la fuente</label>
@@ -386,12 +507,11 @@ export default function ImportarClientesModal({
                 value={nombre}
                 onChange={(e) => {
                   setNombre(e.target.value)
-                  if (error) setError("") // no molesta, solo limpia si estabas bloqueado por duplicado
+                  if (error) setError("")
                 }}
                 placeholder="Ej: Universidad X / Local Centro"
                 className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               />
-              {/* ✅ NUEVO: aviso duplicado */}
               {nombre.trim() && nombreDuplicado && (
                 <p className="mt-1 text-xs text-destructive">
                   Ya existe una fuente con ese nombre (no se permiten nombres repetidos).
@@ -423,6 +543,7 @@ export default function ImportarClientesModal({
             </button>
           </div>
 
+          {/* Formato esperado */}
           <div className="bg-muted/40 border border-border rounded-lg p-3 text-sm text-muted-foreground">
             <p className="font-medium mb-1">Formato esperado del Excel/Sheet:</p>
             <ul className="list-disc list-inside space-y-1">
@@ -434,6 +555,7 @@ export default function ImportarClientesModal({
             </ul>
           </div>
 
+          {/* Fuentes guardadas */}
           <div className="bg-muted/40 border border-border rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium">Fuentes guardadas</p>
@@ -452,52 +574,170 @@ export default function ImportarClientesModal({
               <div className="space-y-2">
                 {sources.map((s) => {
                   const internal = isInternalSource(s)
+                  const expanded = expandedId === s.id
+                  const editing = editingId === s.id
+
                   return (
                     <div
                       key={s.id}
-                      className="bg-card border border-border rounded-lg p-3 flex items-start justify-between gap-3"
+                      className="bg-card border border-border rounded-lg p-3"
                     >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Link2 className="w-4 h-4 text-muted-foreground" />
-                          <p className="text-sm font-medium truncate">{s.nombre}</p>
+                      {/* fila principal */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Link2 className="w-4 h-4 text-muted-foreground" />
+                            <p className="text-sm font-medium truncate">{s.nombre}</p>
 
-                          {/* ✅ NUEVO: badge interna */}
-                          {internal && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
-                              Interna
-                            </span>
+                            {internal && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
+                                Interna
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-muted-foreground truncate mt-1">{s.url}</p>
+
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            Última recarga: {formatWhen(s.ultima_recarga_en)}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2 shrink-0">
+                          {/* ✅ NUEVO: ojo */}
+                          <button
+                            onClick={() => toggleExpand(s)}
+                            disabled={disabled}
+                            className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-muted hover:bg-muted/80 border-border"
+                            title={expanded ? "Cerrar detalles" : "Ver detalles"}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleRecargar(s)}
+                            disabled={disabled || internal}
+                            className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary"
+                            title={internal ? "Fuente interna (no recargable)" : "Recargar fuente"}
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleEliminar(s)}
+                            disabled={disabled || internal}
+                            className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-destructive/10 hover:bg-destructive/20 border-destructive/30 text-destructive"
+                            title={internal ? "Fuente interna (no eliminable)" : "Eliminar fuente"}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ✅ NUEVO: panel expandible */}
+                      {expanded && (
+                        <div className="mt-3 pt-3 border-t border-border space-y-3">
+                          {!editing ? (
+                            <>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="bg-muted/40 border border-border rounded-lg p-3">
+                                  <p className="text-xs text-muted-foreground mb-1">Nombre</p>
+                                  <p className="text-sm font-medium break-words">{s.nombre}</p>
+                                </div>
+
+                                <div className="bg-muted/40 border border-border rounded-lg p-3">
+                                  <p className="text-xs text-muted-foreground mb-1">Enlace</p>
+                                  <p className="text-sm font-medium break-all">{s.url}</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(s.url)}
+                                    className="mt-2 text-xs px-3 py-1 rounded-md bg-muted hover:bg-muted/80 border border-border transition-colors"
+                                  >
+                                    Copiar link
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-[11px] text-muted-foreground">
+                                  Última recarga: {formatWhen(s.ultima_recarga_en)}
+                                </p>
+
+                                <button
+                                  onClick={() => startEdit(s)}
+                                  disabled={disabled || internal}
+                                  className="px-4 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary flex items-center gap-2"
+                                  title={internal ? "Fuente interna (no editable)" : "Editar fuente"}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                  Editar
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs text-muted-foreground mb-2">Nombre</label>
+                                  <input
+                                    value={editNombre}
+                                    onChange={(e) => {
+                                      setEditNombre(e.target.value)
+                                      if (error) setError("")
+                                    }}
+                                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                  />
+                                  {editNombre.trim() && editNombreDuplicado && (
+                                    <p className="mt-1 text-xs text-destructive">
+                                      Ya existe otra fuente con ese nombre.
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <label className="block text-xs text-muted-foreground mb-2">Enlace</label>
+                                  <input
+                                    value={editUrl}
+                                    onChange={(e) => {
+                                      setEditUrl(e.target.value)
+                                      if (error) setError("")
+                                    }}
+                                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                  />
+                                  <p className="mt-1 text-[11px] text-muted-foreground">
+                                    Debe ser de Google Drive/Sheets.
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  onClick={cancelEdit}
+                                  disabled={disabled}
+                                  className="px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 border border-border transition-colors flex items-center gap-2 disabled:opacity-60"
+                                >
+                                  <X className="w-4 h-4" />
+                                  Cancelar
+                                </button>
+
+                                <button
+                                  onClick={() => pedirGuardarEdicion(s)}
+                                  disabled={
+                                    disabled ||
+                                    !editNombre.trim() ||
+                                    !editUrl.trim() ||
+                                    editNombreDuplicado
+                                  }
+                                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  <Save className="w-4 h-4" />
+                                  Guardar
+                                </button>
+                              </div>
+                            </>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground truncate mt-1">{s.url}</p>
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                          Última recarga: {formatWhen(s.ultima_recarga_en)}
-                        </p>
-                      </div>
-
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => handleRecargar(s)}
-                          disabled={disabled || internal}
-                          className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary"
-                          title={
-                            internal ? "Fuente interna (no recargable)" : "Recargar fuente"
-                          }
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          onClick={() => handleEliminar(s)}
-                          disabled={disabled || internal}
-                          className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-destructive/10 hover:bg-destructive/20 border-destructive/30 text-destructive"
-                          title={
-                            internal ? "Fuente interna (no eliminable)" : "Eliminar fuente"
-                          }
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      )}
                     </div>
                   )
                 })}
