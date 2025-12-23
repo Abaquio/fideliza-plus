@@ -16,7 +16,6 @@ export async function obtenerConfiguracion(req, res) {
 
     if (error) throw error;
 
-    // Si aún no existe, la creamos con defaults razonables
     if (!data) {
       const payload = {
         singleton: true,
@@ -45,6 +44,7 @@ export async function obtenerConfiguracion(req, res) {
 
     return res.json({ ok: true, data });
   } catch (e) {
+    console.error("obtenerConfiguracion error:", e);
     return res.status(500).json({
       ok: false,
       message: "No se pudo obtener la configuración",
@@ -53,14 +53,42 @@ export async function obtenerConfiguracion(req, res) {
 }
 
 /**
+ * ✅ NUEVO: endpoint seguro (solo lectura) para reglas de cálculo de puntos
+ * GET /api/configuracion/puntos
+ */
+export async function obtenerPuntosConfiguracion(req, res) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("configuracion")
+      .select("monto_base_puntos, puntos_por_cada_monto")
+      .eq("singleton", true)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    // defaults seguros si aún no existe la fila
+    const payload = {
+      monto_base_puntos: Number(data?.monto_base_puntos ?? 1000) || 1000,
+      puntos_por_cada_monto: Number(data?.puntos_por_cada_monto ?? 1) || 1,
+    };
+
+    return res.json({ ok: true, data: payload });
+  } catch (e) {
+    console.error("obtenerPuntosConfiguracion error:", e);
+    return res.status(500).json({
+      ok: false,
+      message: "No se pudo obtener la configuración de puntos",
+    });
+  }
+}
+
+/**
  * Actualiza la configuración global (singleton=true).
- * Valida mínimos: enteros desde 1 para tasa/base, bienvenida desde 0.
  */
 export async function actualizarConfiguracion(req, res) {
   try {
     const body = req.body || {};
 
-    // Limpieza / normalización
     const tienda_nombre = (body.tienda_nombre ?? "").toString().trim();
     const tienda_email = (body.tienda_email ?? "").toString().trim().toLowerCase();
     const tienda_telefono = (body.tienda_telefono ?? "").toString().trim() || null;
@@ -71,7 +99,6 @@ export async function actualizarConfiguracion(req, res) {
     const monto_base_puntos = Number(body.monto_base_puntos);
     const puntos_bienvenida = Number(body.puntos_bienvenida);
 
-    // Validaciones mínimas (sin ponerse quisquilloso)
     if (!tienda_nombre) {
       return res.status(400).json({ ok: false, message: "El nombre de tienda es obligatorio" });
     }
@@ -79,19 +106,16 @@ export async function actualizarConfiguracion(req, res) {
       return res.status(400).json({ ok: false, message: "Email de contacto inválido" });
     }
 
-    // enteros desde 1
     if (!Number.isFinite(puntos_por_cada_monto) || puntos_por_cada_monto < 1) {
       return res.status(400).json({ ok: false, message: "puntos_por_cada_monto debe ser >= 1" });
     }
     if (!Number.isFinite(monto_base_puntos) || monto_base_puntos < 1) {
       return res.status(400).json({ ok: false, message: "monto_base_puntos debe ser >= 1" });
     }
-    // bienvenida puede ser 0
     if (!Number.isFinite(puntos_bienvenida) || puntos_bienvenida < 0) {
       return res.status(400).json({ ok: false, message: "puntos_bienvenida debe ser >= 0" });
     }
 
-    // Upsert por singleton (tu constraint unique(singleton) lo permite)
     const payload = {
       singleton: true,
       tienda_nombre,
@@ -117,6 +141,7 @@ export async function actualizarConfiguracion(req, res) {
 
     return res.json({ ok: true, data });
   } catch (e) {
+    console.error("actualizarConfiguracion error:", e);
     return res.status(500).json({
       ok: false,
       message: "No se pudo actualizar la configuración",

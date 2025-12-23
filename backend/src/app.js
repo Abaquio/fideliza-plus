@@ -10,7 +10,7 @@ import clientesRoutes from "./routes/clientes.routes.js";
 import descuentosRoutes from "./routes/descuentos.routes.js";
 import staffRoutes from "./routes/staff.routes.js";
 import configuracionRoutes from "./routes/configuracion.routes.js";
-
+import comprasRoutes from "./routes/compras.routes.js"; // ✅ NUEVO
 
 export const app = express();
 
@@ -60,13 +60,14 @@ app.get("/health", (req, res) => {
 // Rutas API
 app.use("/api/auth", authRoutes);
 app.use("/api/clientes", clientesRoutes);
-
 app.use("/api/descuentos", descuentosRoutes);
 
-// ✅ STAFF (NUEVO)
+// ✅ STAFF
 app.use("/api/staff", staffRoutes);
 app.use("/api/configuracion", configuracionRoutes);
 
+// ✅ COMPRAS (NUEVO)
+app.use("/api/compras", comprasRoutes);
 
 // Compatibilidad antigua
 app.use("/auth", authRoutes);
