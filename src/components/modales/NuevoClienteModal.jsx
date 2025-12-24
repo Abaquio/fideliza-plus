@@ -10,7 +10,14 @@ import {
   validarYNormalizarTelefono,
 } from "../../utils/validaciones"
 
-export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = false }) {
+export default function NuevoClienteModal({
+  open,
+  onClose,
+  onSubmit,
+  onCheckRut,     // ✅ NUEVO
+  onReactivar,    // ✅ NUEVO
+  isSaving = false,
+}) {
   const [form, setForm] = useState({
     rut: "",
     nombres: "",
@@ -37,13 +44,18 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
 
   const [submitError, setSubmitError] = useState("")
 
-  // Reset al abrir
+  // ✅ NUEVO: info de RUT existente
+  const [existingCliente, setExistingCliente] = useState(null)
+  const [checkingRut, setCheckingRut] = useState(false)
+
   useEffect(() => {
     if (open) {
       setForm({ rut: "", nombres: "", apellidos: "", email: "", telefono: "" })
       setTouched({ rut: false, nombres: false, apellidos: false, email: false, telefono: false })
       setFieldErrors({ rut: "", nombres: "", apellidos: "", email: "", telefono: "" })
       setSubmitError("")
+      setExistingCliente(null)
+      setCheckingRut(false)
     }
   }, [open])
 
@@ -77,30 +89,26 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
 
     const n = normalizarRut(value)
     const limpio = (value || "").toUpperCase().replace(/[^0-9K]/g, "")
-    // Si todavía está escribiendo (menos de 2 chars), no lo castigamos duro
     if (limpio.length < 2) return "Completa RUT + dígito verificador"
-
-    // Validación real DV
     if (!validarRut(n)) return "RUT inválido (DV no coincide)"
     return ""
   }
 
   const validateNombre = (value) => {
     if (!value?.trim()) return "El nombre es obligatorio"
-    // Si queda muy corto después de trim, también avisamos
     const norm = value.trim().replace(/\s+/g, " ")
     if (norm.length < 2) return "Nombre muy corto"
     return ""
   }
 
   const validateEmailLive = (value) => {
-    if (!value?.trim()) return "" // opcional
+    if (!value?.trim()) return ""
     if (!validarEmail(value.trim())) return "Email inválido (falta @ o dominio)"
     return ""
   }
 
   const validateTelefonoLive = (value) => {
-    if (!value?.trim()) return "" // opcional
+    if (!value?.trim()) return ""
     try {
       validarYNormalizarTelefono(value)
       return ""
@@ -113,7 +121,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
     const next = e.target.value
     setForm((prev) => ({ ...prev, [key]: next }))
 
-    // Validación en vivo (solo si ya tocó el campo)
     if (!touched[key]) return
 
     if (key === "rut") setError("rut", validateRutLive(next))
@@ -122,19 +129,41 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
     if (key === "telefono") setError("telefono", validateTelefonoLive(next))
   }
 
-  const handleRutBlur = () => {
+  // ✅ NUEVO: check rut en backend (solo si es válido)
+  const checkRutExists = async (rutFormatted) => {
+    if (!onCheckRut) return
+    setCheckingRut(true)
+    try {
+      const rutNorm = validarYNormalizarRut(rutFormatted)
+      const found = await onCheckRut(rutNorm)
+      setExistingCliente(found || null)
+    } catch {
+      // si falla el check, no rompemos UX
+      setExistingCliente(null)
+    } finally {
+      setCheckingRut(false)
+    }
+  }
+
+  const handleRutBlur = async () => {
     markTouched("rut")
     if (!form.rut) {
       setError("rut", "El RUT es obligatorio")
       return
     }
 
-    // Normaliza formato con guión automáticamente
     const formatted = normalizarRut(form.rut)
     setForm((prev) => ({ ...prev, rut: formatted }))
 
-    // Valida DV
-    setError("rut", validateRutLive(formatted))
+    const rutErr = validateRutLive(formatted)
+    setError("rut", rutErr)
+    if (rutErr) {
+      setExistingCliente(null)
+      return
+    }
+
+    // ✅ check existencia
+    await checkRutExists(formatted)
   }
 
   const handleNombreBlur = () => {
@@ -161,7 +190,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
   }
 
   const handleTelefonoFocus = () => {
-    // UX: si está vacío, lo iniciamos con +56
     if (!form.telefono) {
       setForm((p) => ({ ...p, telefono: "+56" }))
     }
@@ -174,7 +202,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
       return
     }
 
-    // Intentamos normalizar al formato final +56XXXXXXXXX
     try {
       const tel = validarYNormalizarTelefono(form.telefono)
       setForm((p) => ({ ...p, telefono: tel }))
@@ -196,12 +223,10 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
     if (fieldErrors[key]) {
       return <p className="mt-1 text-xs text-destructive">{fieldErrors[key]}</p>
     }
-    // “ok” discreto (sin cambiar diseño)
     return <p className="mt-1 text-xs text-muted-foreground">{okText}</p>
   }
 
   const handleSubmit = async () => {
-    // Marca como tocados para que aparezcan mensajes si falta algo
     setTouched({ rut: true, nombres: true, apellidos: true, email: true, telefono: true })
 
     const rutErr = validateRutLive(form.rut)
@@ -232,7 +257,31 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
 
       await onSubmit?.(payload)
     } catch (err) {
+      // ✅ si el RUT existe, intentamos refrescar "existingCliente"
+      if (err?.code === "RUT_EXISTS" && err?.existingCliente) {
+        setExistingCliente(err.existingCliente)
+      }
       setSubmitError(err?.message || "No se pudo crear el cliente")
+    }
+  }
+
+  const canReactivar = useMemo(() => {
+    return String(existingCliente?.estado || "").toLowerCase() === "eliminado"
+  }, [existingCliente])
+
+  const handleReactivar = async () => {
+    if (!canReactivar || isSaving) return
+    try {
+      setSubmitError("")
+      await onReactivar?.(existingCliente, {
+        nombres: form.nombres ? validarYNormalizarNombre(form.nombres) : undefined,
+        apellidos: form.apellidos ? validarYNormalizarNombre(form.apellidos) : undefined,
+        email: form.email ? form.email.trim() : undefined,
+        telefono: form.telefono ? validarYNormalizarTelefono(form.telefono) : undefined,
+      })
+      onClose?.()
+    } catch (e) {
+      setSubmitError(e?.message || "No se pudo reactivar el cliente")
     }
   }
 
@@ -241,7 +290,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
       className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
       onMouseDown={handleBackdropClick}
     >
-      {/* ✅ SOLO RESPONSIVE: max-h + scroll interno */}
       <div
         className="
           bg-card border border-border rounded-xl p-6 max-w-md w-full animate-scale-in
@@ -256,8 +304,44 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
           </div>
         ) : null}
 
+        {/* ✅ NUEVO: aviso de existencia */}
+        {checkingRut ? (
+          <div className="mb-4 bg-muted border border-border text-muted-foreground rounded-lg p-3 text-sm">
+            Revisando RUT...
+          </div>
+        ) : null}
+
+        {existingCliente ? (
+          <div className="mb-4 bg-muted border border-border rounded-lg p-3 text-sm">
+            <p className="font-medium">
+              Este RUT ya existe ({String(existingCliente.estado || "activo")}).
+            </p>
+
+            {canReactivar ? (
+              <p className="text-muted-foreground mt-1">
+                Está <b>eliminado</b>. Puedes reactivarlo y seguir usando el mismo registro (sin duplicar RUT).
+              </p>
+            ) : (
+              <p className="text-muted-foreground mt-1">
+                Si está activo/bloqueado, no se puede crear uno nuevo con el mismo RUT.
+              </p>
+            )}
+
+            {canReactivar ? (
+              <div className="mt-3 flex gap-3">
+                <button
+                  onClick={handleReactivar}
+                  className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={isSaving}
+                >
+                  {isSaving ? "Reactivando..." : "Reactivar"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="space-y-4">
-          {/* RUT */}
           <div>
             <label className="block text-sm font-medium mb-2">RUT</label>
             <input
@@ -273,7 +357,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
             {helper("rut")}
           </div>
 
-          {/* Nombres */}
           <div>
             <label className="block text-sm font-medium mb-2">Nombres</label>
             <input
@@ -288,7 +371,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
             {helper("nombres")}
           </div>
 
-          {/* Apellidos */}
           <div>
             <label className="block text-sm font-medium mb-2">Apellidos</label>
             <input
@@ -302,7 +384,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
             />
           </div>
 
-          {/* Email */}
           <div>
             <label className="block text-sm font-medium mb-2">Email</label>
             <input
@@ -317,7 +398,6 @@ export default function NuevoClienteModal({ open, onClose, onSubmit, isSaving = 
             {helper("email")}
           </div>
 
-          {/* Teléfono */}
           <div>
             <label className="block text-sm font-medium mb-2">Teléfono</label>
             <input

@@ -8,7 +8,6 @@ import ValidadoCard from "../../ui/validado"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
 
-// ✅ FIX: token desde sessionStorage (y fallback a localStorage)
 function getAuthToken() {
   return (
     sessionStorage.getItem("token") ||
@@ -30,7 +29,6 @@ function isValidGoogleUrl(value) {
   return value.includes("drive.google.com") || value.includes("docs.google.com")
 }
 
-// ✅ reconocer fuente interna (por flag o por nombre)
 function isInternalSource(source) {
   const name = String(source?.nombre || "").trim().toLowerCase()
   return !!source?.es_interna || name === "medical season"
@@ -49,13 +47,11 @@ export default function ImportarClientesModal({
   const [loadingSources, setLoadingSources] = useState(false)
   const [working, setWorking] = useState(false)
 
-  // ✅ NUEVO: expandir / editar fuente
   const [expandedId, setExpandedId] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [editNombre, setEditNombre] = useState("")
   const [editUrl, setEditUrl] = useState("")
 
-  // Confirm
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState("Confirmar acción")
   const [confirmMessage, setConfirmMessage] = useState("¿Estás seguro de continuar?")
@@ -64,12 +60,10 @@ export default function ImportarClientesModal({
   const [pendingAction, setPendingAction] = useState(null)
   const [pendingCancelAction, setPendingCancelAction] = useState(null)
 
-  // Validado
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoTitle, setValidadoTitle] = useState("Acción realizada")
   const [validadoMessage, setValidadoMessage] = useState("Operación completada correctamente.")
 
-  // ✅ IMPORTANTE: no dejes el token pegado si cambia
   const token = useMemo(() => getAuthToken(), [open])
 
   function showValidado(title, message) {
@@ -118,7 +112,6 @@ export default function ImportarClientesModal({
       setPendingAction(null)
       setPendingCancelAction(null)
 
-      // ✅ reset expand/editar al abrir
       setExpandedId(null)
       setEditingId(null)
       setEditNombre("")
@@ -133,7 +126,6 @@ export default function ImportarClientesModal({
     if (e.target === e.currentTarget) onClose?.()
   }
 
-  // ✅ detectar nombre duplicado (case-insensitive) para crear
   const nombreDuplicado = useMemo(() => {
     const n = nombre.trim().toLowerCase()
     if (!n) return false
@@ -325,6 +317,7 @@ export default function ImportarClientesModal({
     }
   }
 
+  // ✅ NUEVO: elimina fuente con lógica mixta (backend devuelve resumen)
   async function doEliminarFuente(source) {
     setWorking(true)
     setError("")
@@ -341,7 +334,15 @@ export default function ImportarClientesModal({
 
       await fetchFuentes()
       onAfterChange?.()
-      showValidado("Fuente eliminada", `Se eliminó "${source.nombre}" correctamente.`)
+
+      const r = data?.resumen || {}
+      const borrados = Number(r?.clientes_borrados || 0)
+      const marcados = Number(r?.clientes_marcados_eliminados || 0)
+
+      showValidado(
+        "Fuente eliminada",
+        `Se eliminó "${source.nombre}". Clientes borrados: ${borrados}. Clientes marcados como eliminados: ${marcados}.`
+      )
     } catch (e) {
       setError(e.message || "Error eliminando fuente")
     } finally {
@@ -356,7 +357,12 @@ export default function ImportarClientesModal({
 
     openConfirm({
       title: "Eliminar fuente",
-      message: `¿Eliminar la fuente "${source.nombre}"?\n\nEsto intentará borrar también los clientes asociados a esta fuente.`,
+      message:
+        `¿Eliminar la fuente "${source.nombre}"?\n\n` +
+        `Esto hará lo siguiente:\n` +
+        `• Clientes SIN compras: se eliminarán definitivamente.\n` +
+        `• Clientes CON compras: quedarán como "eliminado" (no se borra el historial y se pueden reactivar).\n\n` +
+        `¿Deseas continuar?`,
       label: "Eliminar",
       cancelText: "Cancelar",
       action: () => doEliminarFuente(source),
@@ -364,12 +370,10 @@ export default function ImportarClientesModal({
     })
   }
 
-  // ✅ NUEVO: expandir panel
   const toggleExpand = (source) => {
     const next = expandedId === source.id ? null : source.id
     setExpandedId(next)
 
-    // si colapsa, salir de edición
     if (next === null) {
       setEditingId(null)
       setEditNombre("")
@@ -377,7 +381,6 @@ export default function ImportarClientesModal({
     }
   }
 
-  // ✅ NUEVO: iniciar edición (desde panel)
   const startEdit = (source) => {
     if (isInternalSource(source)) {
       return showValidado("Acción no disponible", "Esta fuente es interna del sistema y no se puede editar.")
@@ -395,7 +398,6 @@ export default function ImportarClientesModal({
     setError("")
   }
 
-  // ✅ NUEVO: duplicado al editar (ignorando el mismo id)
   const editNombreDuplicado = useMemo(() => {
     if (!editingId) return false
     const n = editNombre.trim().toLowerCase()
@@ -406,7 +408,6 @@ export default function ImportarClientesModal({
     })
   }, [editNombre, editingId, sources])
 
-  // ✅ NUEVO: guardar edición (requiere endpoint PUT)
   async function doGuardarEdicion(source) {
     const n = editNombre.trim()
     const u = editUrl.trim()
@@ -469,7 +470,7 @@ export default function ImportarClientesModal({
       await navigator.clipboard.writeText(text || "")
       showValidado("Copiado", "Se copió el enlace al portapapeles.")
     } catch {
-      // sin romper nada si el navegador bloquea clipboard
+      // noop
     }
   }
 
@@ -499,7 +500,6 @@ export default function ImportarClientesModal({
         )}
 
         <div className="space-y-4">
-          {/* Crear fuente */}
           <div className="bg-muted/40 border border-border rounded-lg p-3 space-y-3">
             <div>
               <label className="block text-sm font-medium mb-2">Nombre de la fuente</label>
@@ -543,7 +543,6 @@ export default function ImportarClientesModal({
             </button>
           </div>
 
-          {/* Formato esperado */}
           <div className="bg-muted/40 border border-border rounded-lg p-3 text-sm text-muted-foreground">
             <p className="font-medium mb-1">Formato esperado del Excel/Sheet:</p>
             <ul className="list-disc list-inside space-y-1">
@@ -555,7 +554,6 @@ export default function ImportarClientesModal({
             </ul>
           </div>
 
-          {/* Fuentes guardadas */}
           <div className="bg-muted/40 border border-border rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium">Fuentes guardadas</p>
@@ -578,11 +576,7 @@ export default function ImportarClientesModal({
                   const editing = editingId === s.id
 
                   return (
-                    <div
-                      key={s.id}
-                      className="bg-card border border-border rounded-lg p-3"
-                    >
-                      {/* fila principal */}
+                    <div key={s.id} className="bg-card border border-border rounded-lg p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
@@ -604,7 +598,6 @@ export default function ImportarClientesModal({
                         </div>
 
                         <div className="flex gap-2 shrink-0">
-                          {/* ✅ NUEVO: ojo */}
                           <button
                             onClick={() => toggleExpand(s)}
                             disabled={disabled}
@@ -634,7 +627,6 @@ export default function ImportarClientesModal({
                         </div>
                       </div>
 
-                      {/* ✅ NUEVO: panel expandible */}
                       {expanded && (
                         <div className="mt-3 pt-3 border-t border-border space-y-3">
                           {!editing ? (

@@ -13,6 +13,8 @@ export default function ConfirmDialog({
 }) {
   if (!open) return null
 
+  const isString = typeof message === "string"
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
       <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in">
@@ -36,7 +38,15 @@ export default function ConfirmDialog({
 
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-            <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+
+            {/* ✅ mejora: soporta string con saltos o JSX */}
+            {isString ? (
+              <p className="mt-2 text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
+                {message}
+              </p>
+            ) : (
+              <div className="mt-2 text-sm text-muted-foreground leading-relaxed">{message}</div>
+            )}
 
             <div className="mt-6 flex justify-end gap-3">
               <button

@@ -30,7 +30,7 @@ export default function EditarClienteModal({
     email: "",
     telefono: "",
     estado: "activo",
-    fuente_id: null, // ✅ NUEVO
+    fuente_id: null,
   })
 
   const [errors, setErrors] = useState({})
@@ -57,8 +57,8 @@ export default function EditarClienteModal({
       apellidos: cliente?.apellidos || "",
       email: cliente?.email && cliente.email !== "-" ? cliente.email : "",
       telefono: cliente?.telefono && cliente.telefono !== "-" ? cliente.telefono : "",
-      estado: cliente?.estado || "activo",
-      fuente_id: cliente?.fuente_id ?? null, // ✅ NUEVO
+      estado: cliente?.estado || "activo", // ✅ FIX: respeta eliminado
+      fuente_id: cliente?.fuente_id ?? null,
     })
   }, [open, cliente])
 
@@ -110,11 +110,11 @@ export default function EditarClienteModal({
       }
 
       if (key === "estado") {
-        if (!["activo", "bloqueado"].includes(value)) return "Estado inválido"
+        // ✅ FIX: ahora soporta eliminado
+        if (!["activo", "bloqueado", "eliminado"].includes(value)) return "Estado inválido"
         return null
       }
 
-      // fuente_id: opcional (puede ser null)
       return null
     } catch (e) {
       return e.message || "Campo inválido"
@@ -228,7 +228,6 @@ export default function EditarClienteModal({
 
     payload.estado = payload.estado || "activo"
 
-    // ✅ fuente_id puede ser null
     payload.fuente_id = payload.fuente_id || null
 
     return payload
@@ -319,7 +318,9 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="11222333-4"
             />
-            {touched.rut && errors.rut ? <p className="text-xs text-destructive">{errors.rut}</p> : null}
+            {touched.rut && errors.rut ? (
+              <p className="text-xs text-destructive">{errors.rut}</p>
+            ) : null}
           </div>
 
           {/* Estado */}
@@ -336,8 +337,11 @@ export default function EditarClienteModal({
             >
               <option value="activo">Activo</option>
               <option value="bloqueado">Bloqueado</option>
+              <option value="eliminado">Eliminado</option>
             </select>
-            {touched.estado && errors.estado ? <p className="text-xs text-destructive">{errors.estado}</p> : null}
+            {touched.estado && errors.estado ? (
+              <p className="text-xs text-destructive">{errors.estado}</p>
+            ) : null}
           </div>
 
           {/* Nombres */}
@@ -353,7 +357,9 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Juan Pablo"
             />
-            {touched.nombres && errors.nombres ? <p className="text-xs text-destructive">{errors.nombres}</p> : null}
+            {touched.nombres && errors.nombres ? (
+              <p className="text-xs text-destructive">{errors.nombres}</p>
+            ) : null}
           </div>
 
           {/* Apellidos */}
@@ -369,7 +375,9 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Pérez Soto"
             />
-            {touched.apellidos && errors.apellidos ? <p className="text-xs text-destructive">{errors.apellidos}</p> : null}
+            {touched.apellidos && errors.apellidos ? (
+              <p className="text-xs text-destructive">{errors.apellidos}</p>
+            ) : null}
           </div>
 
           {/* Email */}
@@ -385,7 +393,9 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="correo@dominio.cl"
             />
-            {touched.email && errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
+            {touched.email && errors.email ? (
+              <p className="text-xs text-destructive">{errors.email}</p>
+            ) : null}
           </div>
 
           {/* Teléfono */}
@@ -401,10 +411,12 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="+56912345678"
             />
-            {touched.telefono && errors.telefono ? <p className="text-xs text-destructive">{errors.telefono}</p> : null}
+            {touched.telefono && errors.telefono ? (
+              <p className="text-xs text-destructive">{errors.telefono}</p>
+            ) : null}
           </div>
 
-          {/* ✅ NUEVO: Fuente */}
+          {/* Fuente */}
           <div className="space-y-2 md:col-span-2">
             <label className="text-sm font-medium flex items-center gap-2">
               <Link2 className="w-4 h-4 text-muted-foreground" />

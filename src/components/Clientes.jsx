@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Search, Plus, Eye, Edit, Mail, Phone } from "lucide-react"
+import { Search, Plus, Eye, Edit, Mail, Phone, Trash2 } from "lucide-react"
 
 import NuevoClienteModal from "../components/modales/NuevoClienteModal"
 import ImportarClientesModal from "../components/modales/ImportarClientesModal"
 import VerClienteModal from "../components/modales/VerClienteModal"
 import EditarClienteModal from "../components/modales/EditarClienteModal"
 
+import ConfirmDialog from "../ui/confirm"
 import ValidadoCard from "../ui/validado"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
@@ -56,6 +57,7 @@ function buildPagination(currentPage, totalPages) {
 
 export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState("")
+  const [estadoFiltro, setEstadoFiltro] = useState("activo") // ✅ default Activos
   const [showModal, setShowModal] = useState(false)
 
   const [showImportModal, setShowImportModal] = useState(false)
@@ -65,8 +67,11 @@ export default function Clientes() {
   const [showViewModal, setShowViewModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
 
+  const [clienteEliminar, setClienteEliminar] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false) // ✅ usa ConfirmDialog
+
   const [clientes, setClientes] = useState([])
-  const [fuentes, setFuentes] = useState([]) // ✅ NUEVO
+  const [fuentes, setFuentes] = useState([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
@@ -94,6 +99,13 @@ export default function Clientes() {
       default:
         return "bg-muted text-foreground border-border"
     }
+  }
+
+  const getEstadoChip = (estado) => {
+    const st = String(estado || "").toLowerCase()
+    if (st === "eliminado") return "bg-muted text-muted-foreground border-border"
+    if (st === "bloqueado") return "bg-destructive/10 text-destructive border-destructive/30"
+    return "bg-primary/10 text-primary border-primary/20"
   }
 
   async function fetchClientes(term = "") {
@@ -141,12 +153,10 @@ export default function Clientes() {
     }
   }
 
-  // ✅ NUEVO: cargar fuentes para el select de edición
   async function fetchFuentes() {
     try {
       const token = getAuthToken()
 
-      // Intentamos endpoint más común primero:
       let res = await fetch(`${API_URL}/api/clientes/fuentes`, {
         headers: {
           "Content-Type": "application/json",
@@ -154,7 +164,6 @@ export default function Clientes() {
         },
       })
 
-      // Fallback (por si tu router usa otra ruta)
       if (!res.ok) {
         res = await fetch(`${API_URL}/api/fuentes-clientes`, {
           headers: {
@@ -170,7 +179,6 @@ export default function Clientes() {
       const list = Array.isArray(data?.fuentes) ? data.fuentes : []
       setFuentes(list)
     } catch {
-      // si falla, no rompemos nada; solo no habrá lista (igual puedes guardar otros cambios)
       setFuentes([])
     }
   }
@@ -191,7 +199,7 @@ export default function Clientes() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm])
+  }, [searchTerm, estadoFiltro])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -203,7 +211,6 @@ export default function Clientes() {
     try {
       const token = getAuthToken()
 
-      // ✅ NO agregamos nada acá: el backend asigna Medical Season automáticamente
       const res = await fetch(`${API_URL}/api/clientes`, {
         method: "POST",
         headers: {
@@ -264,6 +271,21 @@ export default function Clientes() {
     }
   }
 
+  // ✅ Eliminar lógico: estado = eliminado
+  async function handleEliminarCliente(cliente) {
+    if (!cliente?.id) return
+    try {
+      await handleUpdateCliente({ id: cliente.id, estado: "eliminado" })
+      showValidado(
+        "Cliente eliminado",
+        `El cliente "${cliente.name}" quedó como eliminado (no se borra historial y se puede reactivar).`
+      )
+    } catch (e) {
+      // el error ya queda en errorMsg desde handleUpdateCliente
+      throw e
+    }
+  }
+
   const emptyState = useMemo(() => {
     return !loading && clientes.length === 0
   }, [loading, clientes.length])
@@ -278,9 +300,21 @@ export default function Clientes() {
     setShowEditModal(true)
   }
 
+  const openDelete = (cliente) => {
+    setClienteEliminar(cliente)
+    setShowDeleteConfirm(true)
+  }
+
+  // ✅ filtro por estado (por defecto activos)
+  const filteredClientes = useMemo(() => {
+    const st = String(estadoFiltro || "activo").toLowerCase()
+    if (st === "todos") return clientes
+    return clientes.filter((c) => String(c.estado || "").toLowerCase() === st)
+  }, [clientes, estadoFiltro])
+
   const totalPages = useMemo(() => {
-    return Math.max(1, Math.ceil((clientes?.length || 0) / PAGE_SIZE))
-  }, [clientes])
+    return Math.max(1, Math.ceil((filteredClientes?.length || 0) / PAGE_SIZE))
+  }, [filteredClientes])
 
   const safePage = useMemo(() => {
     return Math.min(Math.max(currentPage, 1), totalPages)
@@ -288,8 +322,8 @@ export default function Clientes() {
 
   const paginatedClientes = useMemo(() => {
     const start = (safePage - 1) * PAGE_SIZE
-    return clientes.slice(start, start + PAGE_SIZE)
-  }, [clientes, safePage])
+    return filteredClientes.slice(start, start + PAGE_SIZE)
+  }, [filteredClientes, safePage])
 
   const pageItems = useMemo(() => buildPagination(safePage, totalPages), [safePage, totalPages])
 
@@ -338,6 +372,18 @@ export default function Clientes() {
             />
           </div>
 
+          {/* ✅ NUEVO: filtro estado (mismo estilo) */}
+          <select
+            value={estadoFiltro}
+            onChange={(e) => setEstadoFiltro(e.target.value)}
+            className="px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="activo">Activos</option>
+            <option value="bloqueado">Bloqueados</option>
+            <option value="eliminado">Eliminados</option>
+            <option value="todos">Todos</option>
+          </select>
+
           <select className="px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
             <option>Todos los niveles</option>
             <option>Oro</option>
@@ -353,7 +399,7 @@ export default function Clientes() {
         </div>
       ) : null}
 
-      {emptyState ? (
+      {!loading && filteredClientes.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-6 text-muted-foreground">
           No hay clientes para mostrar.
         </div>
@@ -373,13 +419,26 @@ export default function Clientes() {
                 </div>
                 <div>
                   <h3 className="font-bold">{cliente.name}</h3>
-                  <span
-                    className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getTierColor(
-                      cliente.tier
-                    )}`}
-                  >
-                    {cliente.tier}
-                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getTierColor(
+                        cliente.tier
+                      )}`}
+                    >
+                      {cliente.tier}
+                    </span>
+
+                    {/* ✅ NUEVO: chip de estado */}
+                    <span
+                      className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getEstadoChip(
+                        cliente.estado
+                      )}`}
+                      title={`Estado: ${cliente.estado || "activo"}`}
+                    >
+                      {String(cliente.estado || "activo")}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -398,6 +457,15 @@ export default function Clientes() {
                   onClick={() => openEdit(cliente)}
                 >
                   <Edit className="w-4 h-4" />
+                </button>
+
+                {/* ✅ NUEVO: eliminar con ConfirmDialog */}
+                <button
+                  className="p-2 hover:bg-muted rounded-lg transition-colors"
+                  title="Eliminar"
+                  onClick={() => openDelete(cliente)}
+                >
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -434,7 +502,7 @@ export default function Clientes() {
         ))}
       </div>
 
-      {clientes.length > PAGE_SIZE ? (
+      {filteredClientes.length > PAGE_SIZE ? (
         <div className="flex items-center justify-center gap-2 pt-2">
           <button
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -500,13 +568,40 @@ export default function Clientes() {
       <EditarClienteModal
         open={showEditModal}
         cliente={selectedCliente}
-        fuentes={fuentes} // ✅ NUEVO
+        fuentes={fuentes}
         onClose={() => {
           setShowEditModal(false)
           setSelectedCliente(null)
         }}
         onSubmit={handleUpdateCliente}
         isSaving={saving}
+      />
+
+      {/* ✅ NUEVO: confirm reutilizable */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Eliminar cliente"
+        message={
+          clienteEliminar
+            ? `¿Estás seguro de eliminar al cliente "${clienteEliminar.name}"? Esta acción NO borra su historial y NO podras crear un usuario nuevo con este rut; quedará como "eliminado" y podrás reactivarlo más adelante.`
+            : "¿Estás seguro de eliminar este cliente?"
+        }
+        confirmLabel={saving ? "Eliminando..." : "Eliminar"}
+        cancelLabel="Cancelar"
+        onCancel={() => {
+          if (saving) return
+          setShowDeleteConfirm(false)
+          setClienteEliminar(null)
+        }}
+        onConfirm={async () => {
+          if (!clienteEliminar || saving) return
+          try {
+            await handleEliminarCliente(clienteEliminar)
+          } finally {
+            setShowDeleteConfirm(false)
+            setClienteEliminar(null)
+          }
+        }}
       />
 
       <ValidadoCard
