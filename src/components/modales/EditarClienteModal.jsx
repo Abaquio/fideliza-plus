@@ -31,6 +31,9 @@ export default function EditarClienteModal({
     telefono: "",
     estado: "activo",
     fuente_id: null,
+
+    puntos_ajuste_valor: "",
+    puntos_ajuste_op: "sumar", // sumar | descontar
   })
 
   const [errors, setErrors] = useState({})
@@ -42,6 +45,8 @@ export default function EditarClienteModal({
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoTitle, setValidadoTitle] = useState("Listo")
   const [validadoMessage, setValidadoMessage] = useState("Cambios guardados.")
+
+  const puntosActuales = useMemo(() => Number(cliente?.puntos_total ?? 0), [cliente])
 
   useEffect(() => {
     if (!open) return
@@ -57,8 +62,11 @@ export default function EditarClienteModal({
       apellidos: cliente?.apellidos || "",
       email: cliente?.email && cliente.email !== "-" ? cliente.email : "",
       telefono: cliente?.telefono && cliente.telefono !== "-" ? cliente.telefono : "",
-      estado: cliente?.estado || "activo", // ✅ FIX: respeta eliminado
+      estado: cliente?.estado || "activo",
       fuente_id: cliente?.fuente_id ?? null,
+
+      puntos_ajuste_valor: "",
+      puntos_ajuste_op: "sumar",
     })
   }, [open, cliente])
 
@@ -68,16 +76,13 @@ export default function EditarClienteModal({
     if (e.target === e.currentTarget) onClose?.()
   }
 
-  const setField = (key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
+  const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
 
-  function validateField(key, value) {
+  function validateField(key, value, fullForm = form) {
     try {
       if (key === "rut") {
         const v = (value || "").trim()
         if (!v) return "RUT es obligatorio"
-
         const n = normalizarRut(v)
         if (n.replace(/[^0-9K]/g, "").length < 2) return "RUT es obligatorio"
         if (!validarRut(n)) return "RUT inválido"
@@ -110,8 +115,36 @@ export default function EditarClienteModal({
       }
 
       if (key === "estado") {
-        // ✅ FIX: ahora soporta eliminado
         if (!["activo", "bloqueado", "eliminado"].includes(value)) return "Estado inválido"
+        return null
+      }
+
+      if (key === "puntos_ajuste_op") {
+        if (!["sumar", "descontar"].includes(value)) return "Opción inválida"
+        // si cambia a descontar, validamos también el valor
+        const v = String(fullForm.puntos_ajuste_valor ?? "").trim()
+        if (value === "descontar" && v) {
+          const n = parseInt(v, 10)
+          if (Number.isFinite(n) && n > puntosActuales) {
+            return null // el error se asigna al valor, no al select
+          }
+        }
+        return null
+      }
+
+      if (key === "puntos_ajuste_valor") {
+        const v = String(value ?? "").trim()
+        if (!v) return null
+        if (!/^\d+$/.test(v)) return "Debe ser un número entero (ej: 50)"
+        const n = parseInt(v, 10)
+        if (!Number.isFinite(n)) return "Ajuste inválido"
+        if (n <= 0) return "Debe ser mayor a 0"
+
+        // ✅ regla: no permitir negativo al descontar
+        if (fullForm.puntos_ajuste_op === "descontar" && n > puntosActuales) {
+          return `No puedes descontar más de ${puntosActuales} puntos`
+        }
+
         return null
       }
 
@@ -123,22 +156,44 @@ export default function EditarClienteModal({
 
   function validateAll(nextForm) {
     const nextErrors = {}
-    ;["rut", "nombres", "apellidos", "email", "telefono", "estado"].forEach((k) => {
-      const msg = validateField(k, nextForm[k])
+    ;[
+      "rut",
+      "nombres",
+      "apellidos",
+      "email",
+      "telefono",
+      "estado",
+      "puntos_ajuste_op",
+      "puntos_ajuste_valor",
+    ].forEach((k) => {
+      const msg = validateField(k, nextForm[k], nextForm)
       if (msg) nextErrors[k] = msg
     })
     return nextErrors
   }
 
-  const isValid = useMemo(() => {
-    const nextErrors = validateAll(form)
-    return Object.keys(nextErrors).length === 0
-  }, [form])
+  const isValid = useMemo(() => Object.keys(validateAll(form)).length === 0, [form])
 
   const touchAndValidate = (key, value) => {
+    const nextForm = { ...form, [key]: value }
     setTouched((t) => ({ ...t, [key]: true }))
-    const msg = validateField(key, value)
-    setErrors((e) => ({ ...e, _global: undefined, [key]: msg || undefined }))
+
+    // validamos campo actual
+    const msg = validateField(key, value, nextForm)
+
+    // si cambié op, también recalculo el error del valor (por la regla de no-negativo)
+    let extra = {}
+    if (key === "puntos_ajuste_op") {
+      const msgValor = validateField("puntos_ajuste_valor", nextForm.puntos_ajuste_valor, nextForm)
+      extra.puntos_ajuste_valor = msgValor || undefined
+    }
+
+    setErrors((e) => ({
+      ...e,
+      _global: undefined,
+      [key]: msg || undefined,
+      ...extra,
+    }))
   }
 
   const handleChange = (key) => (e) => {
@@ -178,6 +233,19 @@ export default function EditarClienteModal({
       return
     }
 
+    if (key === "puntos_ajuste_op") {
+      setField("puntos_ajuste_op", raw)
+      touchAndValidate("puntos_ajuste_op", raw)
+      return
+    }
+
+    if (key === "puntos_ajuste_valor") {
+      const onlyDigits = String(raw).replace(/[^\d]/g, "")
+      setField("puntos_ajuste_valor", onlyDigits)
+      touchAndValidate("puntos_ajuste_valor", onlyDigits)
+      return
+    }
+
     setField(key, raw)
     touchAndValidate(key, raw)
   }
@@ -197,15 +265,17 @@ export default function EditarClienteModal({
       return
     }
 
-    if (key === "telefono") {
-      touchAndValidate("telefono", form.telefono)
-      return
-    }
-
     if (key === "rut") {
       const formatted = normalizarRut(form.rut || "")
       setField("rut", formatted)
       touchAndValidate("rut", formatted)
+      return
+    }
+
+    if (key === "puntos_ajuste_valor") {
+      const cleaned = String(form.puntos_ajuste_valor ?? "").trim()
+      setField("puntos_ajuste_valor", cleaned)
+      touchAndValidate("puntos_ajuste_valor", cleaned)
     }
   }
 
@@ -213,22 +283,36 @@ export default function EditarClienteModal({
     const payload = { ...raw }
 
     payload.rut = validarYNormalizarRut(payload.rut)
-
     payload.nombres = validarYNormalizarNombre(payload.nombres || "")
     payload.apellidos = payload.apellidos ? validarYNormalizarNombre(payload.apellidos) : null
 
     payload.email = payload.email?.trim() ? payload.email.trim() : null
-    if (payload.email && !validarEmail(payload.email)) {
-      throw new Error("Email inválido")
-    }
+    if (payload.email && !validarEmail(payload.email)) throw new Error("Email inválido")
 
     payload.telefono = payload.telefono?.trim()
       ? validarYNormalizarTelefono(payload.telefono)
       : null
 
     payload.estado = payload.estado || "activo"
-
     payload.fuente_id = payload.fuente_id || null
+
+    const v = String(payload.puntos_ajuste_valor ?? "").trim()
+    if (v) {
+      if (!/^\d+$/.test(v)) throw new Error("El ajuste de puntos debe ser entero (ej: 50)")
+      const n = parseInt(v, 10)
+      if (!Number.isFinite(n) || n <= 0) throw new Error("El ajuste de puntos debe ser mayor a 0")
+
+      // ✅ regla dura aquí también
+      if (payload.puntos_ajuste_op === "descontar" && n > puntosActuales) {
+        throw new Error(`No puedes descontar más de ${puntosActuales} puntos`)
+      }
+
+      const op = payload.puntos_ajuste_op === "descontar" ? -1 : 1
+      payload.puntos_ajuste = n * op
+    }
+
+    delete payload.puntos_ajuste_valor
+    delete payload.puntos_ajuste_op
 
     return payload
   }
@@ -242,31 +326,21 @@ export default function EditarClienteModal({
       telefono: true,
       estado: true,
       fuente_id: true,
+      puntos_ajuste_op: true,
+      puntos_ajuste_valor: true,
     })
 
     const nextErrors = validateAll(form)
     setErrors(nextErrors)
-
     if (Object.keys(nextErrors).length > 0) return
 
     setPendingAction(() => async () => {
-      try {
-        const payload = normalizeBeforeSubmit(form)
-        await onSubmit?.({
-          id: cliente?.id,
-          ...payload,
-        })
+      const payload = normalizeBeforeSubmit(form)
+      await onSubmit?.({ id: cliente?.id, ...payload })
 
-        setValidadoTitle("Cliente actualizado")
-        setValidadoMessage("Los cambios se guardaron correctamente.")
-        setValidadoOpen(true)
-      } catch (e) {
-        setErrors((prev) => ({
-          ...prev,
-          _global: e.message || "No se pudo guardar",
-        }))
-        throw e
-      }
+      setValidadoTitle("Cliente actualizado")
+      setValidadoMessage("Los cambios se guardaron correctamente.")
+      setValidadoOpen(true)
     })
 
     setConfirmOpen(true)
@@ -274,18 +348,25 @@ export default function EditarClienteModal({
 
   if (!open) return null
 
+  const ajusteValor = form.puntos_ajuste_valor ? parseInt(form.puntos_ajuste_valor, 10) : 0
+  const ajusteSigned =
+    ajusteValor > 0 ? (form.puntos_ajuste_op === "descontar" ? -ajusteValor : ajusteValor) : 0
+  const puntosPreview = puntosActuales + (Number.isFinite(ajusteSigned) ? ajusteSigned : 0)
+
+  // ✅ para ayudar al input (no es seguridad, la validación lo es)
+  const inputMax = form.puntos_ajuste_op === "descontar" ? Math.max(0, puntosActuales) : undefined
+
   return (
     <div
       className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
       onMouseDown={handleBackdropClick}
     >
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in">
+      {/* ✅ modal siempre visible: alto máximo + scroll interno */}
+      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in max-h-[90vh] overflow-y-auto overscroll-contain">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h2 className="text-2xl font-bold mb-1">Editar cliente</h2>
-            <p className="text-sm text-muted-foreground">
-              Actualiza los datos del perfil del cliente.
-            </p>
+            <p className="text-sm text-muted-foreground">Actualiza los datos del perfil del cliente.</p>
           </div>
 
           <button
@@ -318,9 +399,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="11222333-4"
             />
-            {touched.rut && errors.rut ? (
-              <p className="text-xs text-destructive">{errors.rut}</p>
-            ) : null}
+            {touched.rut && errors.rut ? <p className="text-xs text-destructive">{errors.rut}</p> : null}
           </div>
 
           {/* Estado */}
@@ -339,9 +418,7 @@ export default function EditarClienteModal({
               <option value="bloqueado">Bloqueado</option>
               <option value="eliminado">Eliminado</option>
             </select>
-            {touched.estado && errors.estado ? (
-              <p className="text-xs text-destructive">{errors.estado}</p>
-            ) : null}
+            {touched.estado && errors.estado ? <p className="text-xs text-destructive">{errors.estado}</p> : null}
           </div>
 
           {/* Nombres */}
@@ -357,9 +434,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Juan Pablo"
             />
-            {touched.nombres && errors.nombres ? (
-              <p className="text-xs text-destructive">{errors.nombres}</p>
-            ) : null}
+            {touched.nombres && errors.nombres ? <p className="text-xs text-destructive">{errors.nombres}</p> : null}
           </div>
 
           {/* Apellidos */}
@@ -375,9 +450,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Pérez Soto"
             />
-            {touched.apellidos && errors.apellidos ? (
-              <p className="text-xs text-destructive">{errors.apellidos}</p>
-            ) : null}
+            {touched.apellidos && errors.apellidos ? <p className="text-xs text-destructive">{errors.apellidos}</p> : null}
           </div>
 
           {/* Email */}
@@ -393,9 +466,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="correo@dominio.cl"
             />
-            {touched.email && errors.email ? (
-              <p className="text-xs text-destructive">{errors.email}</p>
-            ) : null}
+            {touched.email && errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
           </div>
 
           {/* Teléfono */}
@@ -411,9 +482,7 @@ export default function EditarClienteModal({
               className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="+56912345678"
             />
-            {touched.telefono && errors.telefono ? (
-              <p className="text-xs text-destructive">{errors.telefono}</p>
-            ) : null}
+            {touched.telefono && errors.telefono ? <p className="text-xs text-destructive">{errors.telefono}</p> : null}
           </div>
 
           {/* Fuente */}
@@ -439,6 +508,74 @@ export default function EditarClienteModal({
             <p className="text-xs text-muted-foreground">
               Puedes cambiar de dónde proviene este cliente (por ejemplo, Medical Season).
             </p>
+          </div>
+
+          {/* ✅ BLOQUE PUNTOS: responsive + sin negativos */}
+          <div className="space-y-3 md:col-span-2">
+            <div className="bg-muted/40 border border-border rounded-lg p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Puntos actuales</p>
+                  <p className="text-3xl font-bold text-foreground leading-none">{puntosActuales}</p>
+                </div>
+
+                <div className="sm:text-right">
+                  <p className="text-xs text-muted-foreground">Con este ajuste quedará en</p>
+                  <p className="text-3xl font-bold text-foreground leading-none">{puntosPreview}</p>
+
+                  {ajusteSigned !== 0 ? (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ajuste:{" "}
+                      <span className="font-medium text-foreground">
+                        {ajusteSigned > 0 ? `+${ajusteSigned}` : `${ajusteSigned}`}
+                      </span>{" "}
+                      (se guarda como <b>ajuste</b>)
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Si no ingresas un ajuste, no se crea movimiento.
+                    </p>
+                  )}
+
+                  {/* ✅ aviso extra cuando es descuento y se pasa */}
+                  {errors.puntos_ajuste_valor ? (
+                    <p className="text-xs text-destructive mt-1">{errors.puntos_ajuste_valor}</p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-1">
+                  <label className="text-sm font-medium">Tipo</label>
+                  <select
+                    value={form.puntos_ajuste_op}
+                    onChange={handleChange("puntos_ajuste_op")}
+                    className="w-full mt-2 px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="sumar">Sumar</option>
+                    <option value="descontar">Descontar</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-sm font-medium">Cantidad</label>
+                  <input
+                    value={form.puntos_ajuste_valor}
+                    onChange={handleChange("puntos_ajuste_valor")}
+                    onBlur={handleBlur("puntos_ajuste_valor")}
+                    className="w-full mt-2 px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Ej: 50"
+                    inputMode="numeric"
+                    {...(inputMax !== undefined ? { max: inputMax } : {})}
+                  />
+                  {!errors.puntos_ajuste_valor ? (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ingresa un número entero (ej: 50). Si es <b>Descontar</b>, no puede superar los puntos actuales.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

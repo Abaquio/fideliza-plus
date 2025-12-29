@@ -10,49 +10,68 @@ export async function auth(req, res, next) {
 
   try {
     // 1) Validar token Supabase
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !data?.user) {
+    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !authData?.user) {
       return res.status(401).json({ ok: false, message: "Token inválido" });
     }
 
-    const u = data.user;
+    const authUser = authData.user;
 
-    // 2) Traer perfil desde public.usuarios
+    // 2) Traer perfil COMPLETO (mismo estilo que staff.controller)
     const { data: perfil, error: perfilError } = await supabaseAdmin
       .from("usuarios")
-      .select("id, auth_uid, nombre, email, rol_id, sucursal_id, activo")
-      .eq("auth_uid", u.id)
+      .select(
+        `
+        id,
+        auth_uid,
+        nombre,
+        email,
+        activo,
+        rol_id,
+        sucursal_id,
+        roles:rol_id ( id, nombre ),
+        sucursales:sucursal_id ( id, nombre )
+      `
+      )
+      .eq("auth_uid", authUser.id)
       .maybeSingle();
 
-    if (perfilError) throw perfilError;
+    if (perfilError) {
+      return res.status(500).json({ ok: false, message: perfilError.message });
+    }
 
-    // ✅ NUEVO: bloquear requests si el usuario está inactivo
-    if (perfil && perfil.activo === false) {
+    // Si no existe perfil en public.usuarios, bloqueamos (porque el sistema usa esa tabla)
+    if (!perfil) {
       return res.status(403).json({
         ok: false,
-        message: "Usuario inactivo. Contacta al administrador.",
+        message: "Sin permisos (perfil no encontrado en usuarios)",
       });
     }
 
-    // 3) Rol nombre (opcional)
-    let rolNombre = null;
-    if (perfil?.rol_id) {
-      const { data: rolRow } = await supabaseAdmin
-        .from("roles")
-        .select("nombre")
-        .eq("id", perfil.rol_id)
-        .maybeSingle();
-
-      rolNombre = rolRow?.nombre ?? null;
+    // Si está inactivo, bloqueamos
+    if (perfil.activo === false) {
+      return res.status(403).json({ ok: false, message: "Usuario inactivo" });
     }
 
+    // 3) Dejar req.user COMPLETO para TODO el sistema (permisos + UI)
     req.user = {
-      auth_uid: u.id,
-      email: u.email,
-      nombre: perfil?.nombre ?? null,
-      rol: rolNombre,
-      sucursal_id: perfil?.sucursal_id ?? null,
-      perfil_id: perfil?.id ?? null,
+      // ids
+      auth_uid: perfil.auth_uid,
+      perfil_id: perfil.id,
+
+      // datos
+      nombre: perfil.nombre ?? null,
+      email: perfil.email ?? authUser.email ?? null,
+      activo: perfil.activo ?? true,
+
+      // rol
+      rol_id: perfil.roles?.id ?? perfil.rol_id ?? null,
+      rol: perfil.roles?.nombre ?? null, // <- IMPORTANTE: esto lo usa el check permisos
+
+      // sucursal
+      sucursal_id: perfil.sucursales?.id ?? perfil.sucursal_id ?? null,
+      sucursal_nombre: perfil.sucursales?.nombre ?? null,
     };
 
     return next();
@@ -61,5 +80,5 @@ export async function auth(req, res, next) {
   }
 }
 
-// ✅ Alias para que puedas importarlo como authMiddleware sin romper nada
+// alias por compatibilidad (si en algún archivo usan authMiddleware)
 export const authMiddleware = auth;

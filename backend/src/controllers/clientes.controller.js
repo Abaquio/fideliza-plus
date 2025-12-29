@@ -322,7 +322,7 @@ export async function crearCliente(req, res, next) {
 export async function actualizarCliente(req, res, next) {
   try {
     const { id } = req.params;
-    const { rut, nombres, apellidos, email, telefono, estado, fuente_id } = req.body || {};
+    const { rut, nombres, apellidos, email, telefono, estado, fuente_id, puntos_ajuste } = req.body || {};
 
     if (!id) return res.status(400).json({ ok: false, message: "Falta id" });
 
@@ -353,25 +353,93 @@ export async function actualizarCliente(req, res, next) {
       payload.fuente_id = fuente_id || null;
     }
 
-    if (Object.keys(payload).length === 0) {
+    // ✅ Validación puntos_ajuste (opcional)
+    let ajuste = null;
+    if (puntos_ajuste !== undefined) {
+      const n = Number(puntos_ajuste);
+      if (!Number.isInteger(n)) {
+        return res.status(400).json({ ok: false, message: "puntos_ajuste debe ser un entero" });
+      }
+      if (n === 0) {
+        return res.status(400).json({ ok: false, message: "puntos_ajuste no puede ser 0" });
+      }
+      ajuste = n;
+    }
+
+    // Si no hay cambios ni ajuste, no hacemos nada
+    const hayCambiosCliente = Object.keys(payload).length > 0;
+    const hayAjuste = ajuste !== null;
+
+    if (!hayCambiosCliente && !hayAjuste) {
       return res.status(400).json({ ok: false, message: "No hay campos para actualizar" });
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("clientes")
-      .update(payload)
-      .eq("id", id)
-      .select(
-        `id, rut, nombres, apellidos, telefono, email, estado, creado_en, fuente_id, fuentes_clientes ( id, nombre, tipo )`
-      )
-      .single();
+    // 1) Update del cliente si corresponde
+    let updatedRow = null;
+    if (hayCambiosCliente) {
+      const { data, error } = await supabaseAdmin
+        .from("clientes")
+        .update(payload)
+        .eq("id", id)
+        .select(
+          `id, rut, nombres, apellidos, telefono, email, estado, creado_en, fuente_id, fuentes_clientes ( id, nombre, tipo )`
+        )
+        .single();
 
-    if (error) {
-      const msg = error.message || "No se pudo actualizar el cliente";
-      return res.status(400).json({ ok: false, message: msg });
+      if (error) {
+        const msg = error.message || "No se pudo actualizar el cliente";
+        return res.status(400).json({ ok: false, message: msg });
+      }
+
+      updatedRow = data;
+    } else {
+      // si solo hay ajuste, igual necesitamos retornar el cliente
+      const { data, error } = await supabaseAdmin
+        .from("clientes")
+        .select(
+          `id, rut, nombres, apellidos, telefono, email, estado, creado_en, fuente_id, fuentes_clientes ( id, nombre, tipo )`
+        )
+        .eq("id", id)
+        .single();
+
+      if (error) {
+        const msg = error.message || "No se pudo leer el cliente";
+        return res.status(400).json({ ok: false, message: msg });
+      }
+
+      updatedRow = data;
     }
 
-    return res.json({ ok: true, cliente: mapClienteRow(data) });
+    // 2) Insert movimiento de puntos (ajuste)
+    if (hayAjuste) {
+      const usuarioId = req.user?.perfil_id ?? req.user?.id ?? req.user?.usuario_id ?? null;
+
+      const { error: movErr } = await supabaseAdmin.from("puntos_movimientos").insert({
+        cliente_id: id,
+        compra_id: null,
+        tipo: "ajuste",
+        puntos: ajuste,
+        usuario_id: usuarioId,
+      });
+
+      if (movErr) {
+        const msg = movErr.message || "No se pudo registrar el ajuste de puntos";
+        return res.status(400).json({ ok: false, message: msg });
+      }
+    }
+
+    // 3) Recalcular puntos_total para devolver al front
+    const totalsMap = await calcularPuntosTotalesPorClientes([id]);
+    const clienteMapped = mapClienteRow(updatedRow);
+    const clienteOut = {
+      ...clienteMapped,
+      puntos_total: totalsMap.get(id) || 0,
+    };
+
+    return res.json({
+      ok: true,
+      cliente: clienteOut,
+    });
   } catch (err) {
     if (String(err.message).toLowerCase().includes("rut inválido")) {
       return res.status(400).json({ ok: false, message: "RUT inválido" });
@@ -566,19 +634,11 @@ export async function actualizarFuenteClientes(req, res, next) {
 
 /* -----------------------------
    ✅ ELIMINAR FUENTE (MIXTO)
-   - Clientes SIN compras: delete físico
-   - Clientes CON compras: estado='eliminado' y fuente_id=NULL
-   - Luego se elimina la fuente
 ------------------------------ */
 export async function eliminarFuenteClientes(req, res, next) {
   try {
     const { id } = req.params;
 
-    // Mantengo el query param para no romper front,
-    // pero la lógica mixta aplica igual.
-    // const cascade = String(req.query.cascade || "true").toLowerCase() !== "false";
-
-    // 1) Validar fuente y bloquear internas
     const { data: fuente, error: fuenteErr } = await supabaseAdmin
       .from("fuentes_clientes")
       .select("id, nombre, es_interna")
@@ -594,7 +654,6 @@ export async function eliminarFuenteClientes(req, res, next) {
       });
     }
 
-    // 2) Traer clientes asociados a la fuente
     const { data: clientes, error: cliErr } = await supabaseAdmin
       .from("clientes")
       .select("id")
@@ -604,7 +663,6 @@ export async function eliminarFuenteClientes(req, res, next) {
 
     const clienteIds = (clientes || []).map((c) => c.id).filter(Boolean);
 
-    // Si no hay clientes, borrar fuente directo
     if (clienteIds.length === 0) {
       const { error: delFuenteErr } = await supabaseAdmin.from("fuentes_clientes").delete().eq("id", id);
       if (delFuenteErr) throw delFuenteErr;
@@ -621,7 +679,6 @@ export async function eliminarFuenteClientes(req, res, next) {
       });
     }
 
-    // 3) Detectar cuáles tienen compras (FK)
     const { data: compras, error: compErr } = await supabaseAdmin
       .from("compras")
       .select("cliente_id")
@@ -633,13 +690,11 @@ export async function eliminarFuenteClientes(req, res, next) {
     const conCompras = clienteIds.filter((cid) => conComprasSet.has(cid));
     const sinCompras = clienteIds.filter((cid) => !conComprasSet.has(cid));
 
-    // 4) Clientes SIN compras -> delete físico
     if (sinCompras.length > 0) {
       const { error: delCliErr } = await supabaseAdmin.from("clientes").delete().in("id", sinCompras);
       if (delCliErr) throw delCliErr;
     }
 
-    // 5) Clientes CON compras -> estado eliminado + fuente_id NULL (para poder borrar la fuente)
     if (conCompras.length > 0) {
       const { error: updCliErr } = await supabaseAdmin
         .from("clientes")
@@ -649,7 +704,6 @@ export async function eliminarFuenteClientes(req, res, next) {
       if (updCliErr) throw updCliErr;
     }
 
-    // 6) Borrar la fuente (ya no quedan clientes apuntándola)
     const { error: delFuenteErr } = await supabaseAdmin.from("fuentes_clientes").delete().eq("id", id);
     if (delFuenteErr) throw delFuenteErr;
 
@@ -702,7 +756,6 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
   }
 
   const incoming = validBase.map((v) => ({ ...v, fuente_id }));
-
   const ruts = Array.from(new Set(incoming.map((v) => v.rut))).filter(Boolean);
 
   const existentesMap = new Map();
