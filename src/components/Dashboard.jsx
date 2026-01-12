@@ -109,7 +109,7 @@ export default function Dashboard() {
       
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Dashboard prueba de cambios</h1>
+        <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground">Resumen de actividad y métricas clave.</p>
       </div>
 
