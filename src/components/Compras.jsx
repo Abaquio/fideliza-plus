@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Plus, Search, Filter, Eye, Calendar, Trash2 } from "lucide-react"
 import RegistrarCompraModal from "./modales/RegistrarCompraModal"
 import DetallesCompraModal from "./modales/DetallesCompraModal"
+import NuevoMovimientoModal from "./modales/NuevoMovimientoModal"
 
 // ✅ Componentes de tu UI
 import ConfirmDialog from "../ui/confirm"
@@ -94,19 +95,25 @@ function estadoLabel(estado) {
 export default function Compras() {
   const API = getApiBase()
 
-  // ✅ Selector arriba (Compras / Movimientos)
-  const [vista, setVista] = useState("compras") // "compras" | "movimientos"
+  const [vista, setVista] = useState("compras")
 
   const [showRegistrar, setShowRegistrar] = useState(false)
   const [showDetalles, setShowDetalles] = useState(false)
   const [compraSeleccionada, setCompraSeleccionada] = useState(null)
 
+  const [showNuevoMovimiento, setShowNuevoMovimiento] = useState(false)
+
   const [loading, setLoading] = useState(false)
 
   const [clientes, setClientes] = useState([])
+  // ✅ NUEVO: clientes con puntos_total (para que el modal muestre puntos actuales reales)
+  const [clientesConPuntos, setClientesConPuntos] = useState([])
+
   const [sucursales, setSucursales] = useState([])
   const [compras, setCompras] = useState([])
   const [movimientos, setMovimientos] = useState([])
+
+  const [cupones, setCupones] = useState([])
 
   // config real de puntos (para el modal)
   const [config, setConfig] = useState({ monto_base_puntos: 1000, puntos_por_cada_monto: 1 })
@@ -115,8 +122,10 @@ export default function Compras() {
   const [q, setQ] = useState("")
   const [estado, setEstado] = useState("todos")
   const [sucursal, setSucursal] = useState("todas")
-  const [desde, setDesde] = useState(toDateOnlyISO(new Date(Date.now() - 1000 * 60 * 60 * 24 * 7)))
-  const [hasta, setHasta] = useState(toDateOnlyISO(new Date()))
+  
+  // 🔥 CORRECCIÓN 1: Iniciamos vacíos para traer TODO el historial
+  const [desde, setDesde] = useState("") 
+  const [hasta, setHasta] = useState("")
 
   // ✅ Confirm + Validado
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -135,7 +144,6 @@ export default function Compras() {
   const showOk = (title, message) => {
     setValidadoData({ title, message })
     setValidadoOpen(true)
-    // autocierre suave
     window.clearTimeout(showOk._t)
     showOk._t = window.setTimeout(() => setValidadoOpen(false), 2500)
   }
@@ -173,6 +181,48 @@ export default function Compras() {
     setSucursales(data.sucursales || [])
   }
 
+  // ✅ NUEVO: traer clientes con puntos_total (listarClientes)
+  const fetchClientesConPuntos = async () => {
+    const { res, data } = await jsonFetch(`${API}/api/clientes`, {
+      headers: { ...authHeaders() },
+    })
+
+    if (res.status === 401) {
+      handle401()
+      throw new Error("Sesión expirada (401)")
+    }
+    if (res.status === 403) throw new Error("Sin permisos (403)")
+    if (!data?.ok) throw new Error(data?.message || "No se pudieron cargar clientes con puntos")
+
+    // tu API suele devolver en data.data (pero dejamos fallback por si cambia)
+    const list = data.data || data.clientes || []
+    setClientesConPuntos(Array.isArray(list) ? list : [])
+  }
+
+  // ✅ Intento “suave” para traer cupones (si existe endpoint)
+  const fetchCupones = async () => {
+    // 🔥 CORRECCIÓN 2: Apuntamos solo a la ruta real de tu backend (/api/descuentos)
+    const candidates = [`${API}/api/descuentos`]
+
+    for (const url of candidates) {
+      try {
+        const { res, data } = await jsonFetch(url, { headers: { ...authHeaders() } })
+        if (res.ok && data?.ok) {
+          // puede venir como data o cupones
+          const list = data.data || data.cupones || []
+          if (Array.isArray(list)) {
+            setCupones(list)
+            return
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    setCupones([])
+  }
+
   const fetchCompras = async () => {
     const params = new URLSearchParams()
     if (estado !== "todos") params.set("estado", estado)
@@ -199,7 +249,7 @@ export default function Compras() {
     if (desde) params.set("desde", desde)
     if (hasta) params.set("hasta", hasta)
 
-    // ✅ Ajustes manuales los tratamos como “movimientos”
+    // ✅ ahora backend devuelve ajuste + canje
     const { res, data } = await jsonFetch(`${API}/api/compras/ajustes?${params.toString()}`, {
       headers: { ...authHeaders() },
     })
@@ -214,12 +264,12 @@ export default function Compras() {
     setMovimientos(data.data || [])
   }
 
-  // carga inicial
   useEffect(() => {
     ;(async () => {
       try {
         setLoading(true)
-        await Promise.all([fetchMeta(), fetchConfigPuntos()])
+        // ✅ NUEVO: añadimos fetchClientesConPuntos sin tocar el resto
+        await Promise.all([fetchMeta(), fetchConfigPuntos(), fetchCupones(), fetchClientesConPuntos()])
         await fetchCompras()
       } catch (e) {
         console.error(e)
@@ -230,7 +280,6 @@ export default function Compras() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // recarga según filtros + vista
   useEffect(() => {
     ;(async () => {
       try {
@@ -246,7 +295,6 @@ export default function Compras() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vista, estado, sucursal, desde, hasta])
 
-  // ====== COMPRAS TABLA ======
   const comprasEnTabla = useMemo(() => {
     return (compras || []).map((c) => {
       const cli = c?.clientes || null
@@ -289,7 +337,6 @@ export default function Compras() {
     return { vigentes, anuladas, totalMontoVigente }
   }, [comprasFiltradas])
 
-  // ====== MOVIMIENTOS TABLA (AJUSTES) ======
   const movimientosEnTabla = useMemo(() => {
     return (movimientos || []).map((m) => {
       const cli = m?.clientes || null
@@ -320,6 +367,18 @@ export default function Compras() {
     return { total, neto }
   }, [movimientosFiltrados])
 
+  // puntos actuales por cliente (desde la lista de movimientos filtrada total histórica cargada)
+  // ✅ si no alcanza, backend igual valida para no dejar negativo
+  const puntosActualesByCliente = useMemo(() => {
+    const map = new Map()
+    for (const m of movimientos || []) {
+      const cid = m.cliente_id
+      if (!cid) continue
+      map.set(cid, (map.get(cid) || 0) + Number(m.puntos || 0))
+    }
+    return map
+  }, [movimientos])
+
   const handleVerDetalles = (compra) => {
     setCompraSeleccionada({
       ...compra,
@@ -334,10 +393,7 @@ export default function Compras() {
 
       const { res, data } = await jsonFetch(`${API}/api/compras`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders(),
-        },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify(payload),
       })
 
@@ -362,10 +418,7 @@ export default function Compras() {
   const handleUpdateCompra = async (compraId, payload) => {
     const { res, data } = await jsonFetch(`${API}/api/compras/${compraId}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(),
-      },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(payload),
     })
 
@@ -380,7 +433,6 @@ export default function Compras() {
     showOk("Acción realizada", "Compra actualizada correctamente.")
   }
 
-  // ✅ Confirmación para eliminar
   const pedirEliminarCompra = (compra) => {
     setConfirmPayload({
       id: compra.id,
@@ -419,12 +471,44 @@ export default function Compras() {
     }
   }
 
+  // ✅ NUEVO: crear movimiento (ajuste/canje)
+  const handleCrearMovimiento = async (payload) => {
+    try {
+      setLoading(true)
+
+      const { res, data } = await jsonFetch(`${API}/api/compras/movimientos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(payload),
+      })
+
+      if (res.status === 401) {
+        handle401()
+        throw new Error("Sesión expirada (401)")
+      }
+      if (res.status === 403) throw new Error("Sin permisos (403)")
+      if (!data?.ok) throw new Error(data?.message || "No se pudo guardar el movimiento")
+
+      setShowNuevoMovimiento(false)
+      await fetchMovimientos()
+
+      // ✅ NUEVO: refresca puntos de clientes para que el modal muestre saldo real la próxima vez
+      await fetchClientesConPuntos()
+
+      showOk("Acción realizada", "Movimiento registrado correctamente.")
+    } catch (e) {
+      console.error(e)
+      throw e
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="p-5 sm:p-6">
+    <div className="p-5 sm:p-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
         <div>
-          {/* ✅ Título + selector arriba (como tu foto) */}
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl sm:text-3xl font-bold">Compras / Movimientos</h1>
 
@@ -463,13 +547,22 @@ export default function Compras() {
           </p>
         </div>
 
-        {vista === "compras" && (
+        {vista === "compras" ? (
           <button
             onClick={() => setShowRegistrar(true)}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors w-full sm:w-auto"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors w-full sm:w-auto shadow-lg shadow-primary/20"
           >
             <Plus className="w-4 h-4" />
             Registrar Compra
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowNuevoMovimiento(true)}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors w-full sm:w-auto shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo Movimiento
           </button>
         )}
       </div>
@@ -678,7 +771,6 @@ export default function Compras() {
                             <Trash2 className="w-4 h-4" />
                             <span className="hidden sm:inline">Eliminar</span>
                           </button>
-
                         </div>
                       </td>
                     </tr>
@@ -765,6 +857,16 @@ export default function Compras() {
         onUpdate={handleUpdateCompra}
       />
 
+      <NuevoMovimientoModal
+        open={showNuevoMovimiento}
+        onClose={() => setShowNuevoMovimiento(false)}
+        // ✅ NUEVO: pasamos la lista que sí trae puntos_total
+        clientes={clientesConPuntos.length ? clientesConPuntos : clientes}
+        cupones={cupones}
+        puntosActuales={0}
+        onSubmit={handleCrearMovimiento}
+      />
+
       {/* Confirm + Validado */}
       <ConfirmDialog
         open={confirmOpen}
@@ -782,16 +884,6 @@ export default function Compras() {
         message={validadoData.message}
         onClose={() => setValidadoOpen(false)}
       />
-      <ConfirmDialog
-        open={confirmOpen}
-        title={confirmPayload.title}
-        message={confirmPayload.message}
-        confirmLabel="Eliminar"
-        cancelLabel="Cancelar"
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={confirmarEliminarCompra}
-      />
-
     </div>
   )
 }

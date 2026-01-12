@@ -1,72 +1,154 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, User, Mail, Shield, Building2, Pencil, Save, X } from "lucide-react"
+import {
+  ArrowLeft,
+  User,
+  Mail,
+  Shield,
+  Building2,
+  Pencil,
+  Save,
+  X,
+  KeyRound,
+  Eye,
+  EyeOff,
+} from "lucide-react"
 
 import ConfirmDialog from "../ui/confirm"
 import ValidadoCard from "../ui/validado"
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
 
-function getAuthToken() {
-  // ✅ igual que Clientes.jsx
-  return localStorage.getItem("token") || localStorage.getItem("authToken") || ""
-}
-
-function getLocalUser() {
-  // ✅ soporta distintas llaves por si en otra parte guardaste diferente
-  const raw =
-    localStorage.getItem("user") ||
-    localStorage.getItem("usuario") ||
-    localStorage.getItem("authUser") ||
-    "{}"
-
+function safeParse(raw) {
   try {
-    return JSON.parse(raw)
+    return JSON.parse(raw || "{}")
   } catch {
     return {}
   }
 }
 
+function getAuthToken() {
+  const keys = ["token", "authToken", "access_token", "accessToken", "sb-access-token"]
+  for (const k of keys) {
+    const a = localStorage.getItem(k)
+    if (a) return a
+    const b = sessionStorage.getItem(k)
+    if (b) return b
+  }
+  const u = safeParse(localStorage.getItem("user") || sessionStorage.getItem("user") || "{}")
+  if (u?.token) return u.token
+  if (u?.access_token) return u.access_token
+  return ""
+}
+
+function getLocalUser() {
+  const rawLocal =
+    localStorage.getItem("user") ||
+    localStorage.getItem("usuario") ||
+    localStorage.getItem("authUser")
+  const rawSession =
+    sessionStorage.getItem("user") ||
+    sessionStorage.getItem("usuario") ||
+    sessionStorage.getItem("authUser")
+
+  const u = safeParse(rawLocal || rawSession)
+  return u && typeof u === "object" ? u : {}
+}
+
+function pickUserFromJson(json) {
+  return json?.user || json?.data || null
+}
+
+function clearSession() {
+  const keys = [
+    "token",
+    "authToken",
+    "access_token",
+    "accessToken",
+    "refresh_token",
+    "refreshToken",
+    "sb-access-token",
+    "sb-refresh-token",
+    "user",
+    "usuario",
+    "authUser",
+  ]
+
+  keys.forEach((k) => {
+    localStorage.removeItem(k)
+    sessionStorage.removeItem(k)
+  })
+
+  window.dispatchEvent(new Event("logout"))
+  window.dispatchEvent(new Event("profile-updated"))
+}
+
 async function fetchMe(token) {
-  // ✅ probamos ambas rutas (según cómo montaste express)
-  const candidates = [`${API_URL}/api/auth/me`, `${API_URL}/auth/me`]
+  const candidates = [`${API_URL}/api/auth/me`, `${API_URL}/auth/me`, `${API_URL}/api/me`]
+  let lastError = null
 
   for (const url of candidates) {
     try {
-      const resp = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       const json = await resp.json().catch(() => ({}))
-      if (resp.ok && json?.ok && json?.user) return json.user
-    } catch {
-      // seguimos con el siguiente
+      const picked = pickUserFromJson(json)
+
+      if (resp.ok && (json?.ok === true || typeof json?.ok === "undefined") && picked) {
+        return { user: picked, from: url }
+      }
+
+      lastError = { url, status: resp.status, message: json?.message || "No se pudo cargar /me" }
+    } catch (e) {
+      lastError = { url, status: 0, message: e?.message || "Error de red" }
     }
   }
 
-  return null
+  return { user: null, error: lastError }
 }
 
 async function putMe(token, payload) {
-  const candidates = [`${API_URL}/api/auth/me`, `${API_URL}/auth/me`]
+  const candidates = [`${API_URL}/api/auth/me`, `${API_URL}/auth/me`, `${API_URL}/api/me`]
+  let lastError = null
 
   for (const url of candidates) {
     try {
       const resp = await fetch(url, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       })
       const json = await resp.json().catch(() => ({}))
-      if (resp.ok && json?.ok) return json.user || null
-    } catch {
-      // seguimos
+      const picked = pickUserFromJson(json)
+
+      if (resp.ok && json?.ok) return picked || null
+
+      lastError = { url, status: resp.status, message: json?.message || "No se pudo actualizar /me" }
+    } catch (e) {
+      lastError = { url, status: 0, message: e?.message || "Error de red" }
     }
   }
 
-  throw new Error("No se pudo actualizar el perfil (ruta /me no encontrada o backend no responde)")
+  throw new Error(
+    lastError
+      ? `${lastError.message} (status ${lastError.status || "?"} en ${lastError.url})`
+      : "No se pudo actualizar el perfil"
+  )
+}
+
+async function changePassword(token, payload) {
+  const url = `${API_URL}/api/auth/me/password`
+
+  const resp = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+
+  const json = await resp.json().catch(() => ({}))
+  if (!resp.ok || !json?.ok) {
+    throw new Error(json?.message || "No se pudo cambiar la contraseña")
+  }
+  return true
 }
 
 export default function PerfilFull() {
@@ -84,26 +166,52 @@ export default function PerfilFull() {
   })
   const [errors, setErrors] = useState({})
 
+  // Password state
+  const [pwMode, setPwMode] = useState(false)
+  const [pw, setPw] = useState({ actual: "", nueva: "", confirmar: "" })
+  const [pwErrors, setPwErrors] = useState({})
+  const [pwLoading, setPwLoading] = useState(false)
+
+  const [showPwActual, setShowPwActual] = useState(false)
+  const [showPwNueva, setShowPwNueva] = useState(false)
+  const [showPwConfirmar, setShowPwConfirmar] = useState(false)
+
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoTitle, setValidadoTitle] = useState("Listo")
   const [validadoMessage, setValidadoMessage] = useState("Perfil actualizado.")
 
-  // ✅ Cargar perfil real del backend
+  const [confirmPwOpen, setConfirmPwOpen] = useState(false)
+
   useEffect(() => {
     const run = async () => {
       const token = getAuthToken()
-      if (!token) return
+      if (!token) {
+        setErrors({ _global: "No hay sesión activa. Vuelve a iniciar sesión." })
+        return
+      }
 
       setLoading(true)
       try {
-        const me = await fetchMe(token)
-        if (me) {
-          setUser(me)
-          localStorage.setItem("user", JSON.stringify(me))
+        const result = await fetchMe(token)
+
+        if (result?.user) {
+          setUser(result.user)
+          localStorage.setItem("user", JSON.stringify(result.user))
+          window.dispatchEvent(new Event("profile-updated"))
+
           setForm({
-            nombre: me?.nombre || "",
-            email: me?.email || "",
+            nombre: result.user?.nombre || "",
+            email: result.user?.email || "",
+          })
+          setErrors({})
+          return
+        }
+
+        if (result?.error) {
+          const e = result.error
+          setErrors({
+            _global: `No se pudo cargar el perfil (status ${e.status || "?"}). ${e.message}`,
           })
         }
       } finally {
@@ -130,11 +238,50 @@ export default function PerfilFull() {
     return e
   }
 
+  const validatePw = (next = pw) => {
+    const e = {}
+    const min = 8
+    const max = 12
+
+    if (!next.actual) e.actual = "Ingresa tu contraseña actual"
+    if (!next.nueva) e.nueva = "Ingresa una nueva contraseña"
+    if (!next.confirmar) e.confirmar = "Confirma la nueva contraseña"
+
+    if (next.nueva) {
+      if (next.nueva.length < min || next.nueva.length > max) {
+        e.nueva = `Debe tener entre ${min} y ${max} caracteres`
+      }
+    }
+
+    if (next.confirmar) {
+      if (next.confirmar.length < min || next.confirmar.length > max) {
+        e.confirmar = `Debe tener entre ${min} y ${max} caracteres`
+      }
+    }
+
+    if (next.nueva && next.confirmar && next.nueva !== next.confirmar) {
+      e.confirmar = "No coincide con la nueva contraseña"
+    }
+
+    if (next.actual && next.nueva && next.actual === next.nueva) {
+      e.nueva = "La nueva contraseña debe ser distinta"
+    }
+
+    return e
+  }
+
   const onChange = (k) => (ev) => {
     const v = ev.target.value
     const next = { ...form, [k]: v }
     setForm(next)
     setErrors((prev) => ({ ...prev, ...validate(next) }))
+  }
+
+  const onChangePw = (k) => (ev) => {
+    const v = ev.target.value
+    const next = { ...pw, [k]: v }
+    setPw(next)
+    setPwErrors(validatePw(next))
   }
 
   const startEdit = () => {
@@ -144,6 +291,10 @@ export default function PerfilFull() {
       nombre: user?.nombre || "",
       email: user?.email || "",
     })
+
+    setPwMode(false)
+    setPw({ actual: "", nueva: "", confirmar: "" })
+    setPwErrors({})
   }
 
   const cancelEdit = () => {
@@ -153,12 +304,22 @@ export default function PerfilFull() {
       nombre: user?.nombre || "",
       email: user?.email || "",
     })
+
+    setPwMode(false)
+    setPw({ actual: "", nueva: "", confirmar: "" })
+    setPwErrors({})
   }
 
   const canSave = useMemo(() => {
     const e = validate(form)
     return Object.keys(e).length === 0 && !loading
   }, [form, loading])
+
+  const canSavePw = useMemo(() => {
+    if (!pwMode) return false
+    const e = validatePw(pw)
+    return Object.keys(e).length === 0 && !pwLoading
+  }, [pw, pwMode, pwLoading])
 
   const doSave = async () => {
     const token = getAuthToken()
@@ -185,6 +346,7 @@ export default function PerfilFull() {
 
       setUser(updated)
       localStorage.setItem("user", JSON.stringify(updated))
+      window.dispatchEvent(new Event("profile-updated"))
 
       setIsEditing(false)
       setValidadoTitle("Perfil actualizado")
@@ -194,6 +356,34 @@ export default function PerfilFull() {
       setErrors({ _global: err?.message || "No se pudo actualizar el perfil" })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const doSavePassword = async () => {
+    const token = getAuthToken()
+    if (!token) {
+      setPwErrors({ _global: "Sesión no válida. Vuelve a iniciar sesión." })
+      return
+    }
+
+    const e = validatePw(pw)
+    setPwErrors(e)
+    if (Object.keys(e).length > 0) return
+
+    setPwLoading(true)
+    try {
+      await changePassword(token, {
+        actual: pw.actual,
+        nueva: pw.nueva,
+      })
+
+      // ✅ Al cambiar contraseña: cerrar sesión y volver a login
+      clearSession()
+      navigate("/login", { replace: true })
+    } catch (err) {
+      setPwErrors({ _global: err?.message || "No se pudo cambiar la contraseña" })
+    } finally {
+      setPwLoading(false)
     }
   }
 
@@ -243,7 +433,7 @@ export default function PerfilFull() {
                 <button
                   onClick={cancelEdit}
                   className="px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors flex items-center gap-2"
-                  disabled={loading}
+                  disabled={loading || pwLoading}
                 >
                   <X className="w-4 h-4" />
                   Cancelar
@@ -323,6 +513,109 @@ export default function PerfilFull() {
           </div>
         </div>
 
+        {/* Contraseña */}
+        <div className="mt-4 border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-2">
+              <KeyRound className="w-4 h-4" /> Contraseña
+            </p>
+
+            {isEditing ? (
+              <button
+                onClick={() => {
+                  setPwMode((v) => !v)
+                  setPwErrors({})
+                  setPw({ actual: "", nueva: "", confirmar: "" })
+                }}
+                className="px-3 py-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors text-sm flex items-center gap-2"
+              >
+                <KeyRound className="w-4 h-4" />
+                {pwMode ? "Ocultar" : "Cambiar contraseña"}
+              </button>
+            ) : null}
+          </div>
+
+          {!pwMode ? (
+            <p className="text-sm font-medium mt-2">************</p>
+          ) : (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="relative">
+                <input
+                  type={showPwActual ? "text" : "password"}
+                  value={pw.actual}
+                  onChange={onChangePw("actual")}
+                  className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary pr-10"
+                  placeholder="Actual"
+                  maxLength={12}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwActual((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPwActual ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+                {pwErrors.actual ? <p className="text-xs text-destructive mt-1">{pwErrors.actual}</p> : null}
+              </div>
+
+              <div className="relative">
+                <input
+                  type={showPwNueva ? "text" : "password"}
+                  value={pw.nueva}
+                  onChange={onChangePw("nueva")}
+                  className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary pr-10"
+                  placeholder="Nueva (8-12)"
+                  maxLength={12}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwNueva((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPwNueva ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+                {pwErrors.nueva ? <p className="text-xs text-destructive mt-1">{pwErrors.nueva}</p> : null}
+              </div>
+
+              <div className="relative">
+                <input
+                  type={showPwConfirmar ? "text" : "password"}
+                  value={pw.confirmar}
+                  onChange={onChangePw("confirmar")}
+                  className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary pr-10"
+                  placeholder="Confirmar"
+                  maxLength={12}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwConfirmar((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPwConfirmar ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+                {pwErrors.confirmar ? <p className="text-xs text-destructive mt-1">{pwErrors.confirmar}</p> : null}
+              </div>
+
+              {pwErrors?._global ? (
+                <div className="sm:col-span-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-lg p-3 text-sm">
+                  {pwErrors._global}
+                </div>
+              ) : null}
+
+              <div className="sm:col-span-3 flex justify-end">
+                <button
+                  onClick={() => setConfirmPwOpen(true)}
+                  className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-2 disabled:opacity-60"
+                  disabled={!canSavePw}
+                >
+                  <Save className="w-4 h-4" />
+                  {pwLoading ? "Guardando..." : "Guardar contraseña"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="mt-4 border border-border rounded-lg p-4">
           <p className="text-xs text-muted-foreground mb-1">Detalles</p>
           <div className="text-sm text-muted-foreground space-y-1 break-words">
@@ -336,6 +629,7 @@ export default function PerfilFull() {
         </div>
       </div>
 
+      {/* Confirm guardar perfil */}
       <ConfirmDialog
         open={confirmOpen}
         title="Guardar cambios"
@@ -346,6 +640,23 @@ export default function PerfilFull() {
         onConfirm={async () => {
           setConfirmOpen(false)
           await doSave()
+        }}
+      />
+
+      {/* Confirm cambiar contraseña (avisa cierre de sesión) */}
+      <ConfirmDialog
+        open={confirmPwOpen}
+        title="Cambiar contraseña"
+        message={
+          "¿Deseas cambiar tu contraseña?\n\n" +
+          "⚠️ Importante: al cambiarla se cerrará tu sesión automáticamente y tendrás que iniciar sesión con tus nuevas credenciales."
+        }
+        confirmLabel="Cambiar"
+        cancelLabel="Cancelar"
+        onCancel={() => setConfirmPwOpen(false)}
+        onConfirm={async () => {
+          setConfirmPwOpen(false)
+          await doSavePassword()
         }}
       />
 

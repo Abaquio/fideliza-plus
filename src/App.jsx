@@ -25,14 +25,35 @@ const PATH_TO_VIEW = {
   "/perfil": "perfil",
 }
 
-function readSession() {
-  const token = sessionStorage.getItem("token")
-  let user = null
+function safeParse(raw) {
   try {
-    user = JSON.parse(sessionStorage.getItem("user") || "null")
+    return JSON.parse(raw || "null")
   } catch {
-    user = null
+    return null
   }
+}
+
+function readSession() {
+  // ✅ token: primero sessionStorage, luego localStorage (compatibilidad)
+  const token =
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token") ||
+    sessionStorage.getItem("access_token") ||
+    ""
+
+  // ✅ user: primero sessionStorage, luego localStorage (compatibilidad)
+  const user =
+    safeParse(sessionStorage.getItem("user")) ||
+    safeParse(sessionStorage.getItem("usuario")) ||
+    safeParse(sessionStorage.getItem("authUser")) ||
+    safeParse(localStorage.getItem("user")) ||
+    safeParse(localStorage.getItem("usuario")) ||
+    safeParse(localStorage.getItem("authUser")) ||
+    null
+
   return { token, user }
 }
 
@@ -72,20 +93,26 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
 
-  // ✅ dejamos este listener, no rompe nada (pero sessionStorage no se comparte entre pestañas)
+  // ✅ cambios entre pestañas (solo para localStorage)
   useEffect(() => {
     const onStorage = (e) => {
-      if (e.key === "token" || e.key === "user") setSession(readSession())
+      if (e.key === "token" || e.key === "authToken" || e.key === "access_token" || e.key === "user") {
+        setSession(readSession())
+      }
     }
     window.addEventListener("storage", onStorage)
     return () => window.removeEventListener("storage", onStorage)
   }, [])
 
-  // ✅ este es el importante: login/logout en la misma pestaña
+  // ✅ cambios en la misma pestaña (login/logout + perfil actualizado)
   useEffect(() => {
-    const onAuthChanged = () => setSession(readSession())
-    window.addEventListener("auth-changed", onAuthChanged)
-    return () => window.removeEventListener("auth-changed", onAuthChanged)
+    const sync = () => setSession(readSession())
+    window.addEventListener("auth-changed", sync)
+    window.addEventListener("profile-updated", sync) // 🔥 ESTE era el que faltaba
+    return () => {
+      window.removeEventListener("auth-changed", sync)
+      window.removeEventListener("profile-updated", sync)
+    }
   }, [])
 
   const topbarUser = useMemo(() => {
@@ -94,6 +121,8 @@ export default function App() {
       name: user?.nombre || user?.name || "Usuario",
       email: user?.email || "",
       avatar: user?.avatar || "👤",
+      // (opcional) si en Topbar usas nombre directo, lo dejamos igual
+      nombre: user?.nombre || user?.name || "Usuario",
     }
   }, [user])
 

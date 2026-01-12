@@ -1,13 +1,22 @@
 import { Router } from "express";
-import { login, me, updateMe } from "../controllers/auth.controller.js";
+import {
+  login,
+  refresh,
+  me,
+  updateMe,
+  updateMyPassword,
+} from "../controllers/auth.controller.js";
 import { auth } from "../middleware/auth.js";
 
 const router = Router();
 
 router.post("/login", login);
-router.get("/me", auth, me);
+router.post("/refresh", refresh);
 
-// ✅ PUT /api/auth/me (editar mi perfil)
+router.get("/me", auth, me);
 router.put("/me", auth, updateMe);
+
+// ✅ NUEVO: cambiar contraseña (verifica actual real)
+router.put("/me/password", auth, updateMyPassword);
 
 export default router;

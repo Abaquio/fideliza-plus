@@ -130,9 +130,7 @@ export async function refresh(req, res, next) {
 }
 
 /**
- * ✅ CORREGIDO: GET /api/auth/me
- * En vez de devolver req.user (que a veces viene incompleto),
- * devolvemos el perfil completo (igual que Staff) usando auth_uid.
+ * ✅ GET /api/auth/me
  */
 export async function me(req, res, next) {
   try {
@@ -163,7 +161,6 @@ export async function me(req, res, next) {
     if (error) return res.status(500).json({ ok: false, message: error.message });
     if (!data) return res.status(404).json({ ok: false, message: "Perfil no encontrado" });
 
-    // Si está inactivo, puedes bloquear también acá (opcional, consistente con login)
     if (data.activo === false) {
       return res.status(403).json({ ok: false, message: "Usuario inactivo" });
     }
@@ -188,10 +185,8 @@ export async function me(req, res, next) {
 }
 
 /**
- * ✅ NUEVO: PUT /api/auth/me
- * Edita tu propio perfil (nombre y/o email)
- * - nombre: solo tabla public.usuarios
- * - email: actualiza Supabase Auth + tabla public.usuarios
+ * ✅ PUT /api/auth/me
+ * Edita: nombre/email
  */
 export async function updateMe(req, res, next) {
   try {
@@ -201,7 +196,6 @@ export async function updateMe(req, res, next) {
       return res.status(401).json({ ok: false, message: "No autorizado" });
     }
 
-    // Validaciones simples (sin romper nada)
     if (typeof nombre !== "undefined" && typeof nombre !== "string") {
       return res.status(400).json({ ok: false, message: "Nombre inválido" });
     }
@@ -218,14 +212,14 @@ export async function updateMe(req, res, next) {
       const cleanEmail = email.trim().toLowerCase();
       patchUsuarios.email = cleanEmail;
       patchAuth.email = cleanEmail;
-      patchAuth.email_confirm = true; // evita confirmaciones raras
+      patchAuth.email_confirm = true;
     }
 
     if (Object.keys(patchUsuarios).length === 0 && Object.keys(patchAuth).length === 0) {
       return res.json({ ok: true, message: "Sin cambios" });
     }
 
-    // 1) Si viene email, actualizar en Supabase Auth
+    // 1) Auth
     if (Object.keys(patchAuth).length > 0) {
       const { error: aErr } = await supabaseAdmin.auth.admin.updateUserById(
         req.user.auth_uid,
@@ -234,7 +228,7 @@ export async function updateMe(req, res, next) {
       if (aErr) return res.status(400).json({ ok: false, message: aErr.message });
     }
 
-    // 2) Actualizar tabla public.usuarios
+    // 2) Tabla usuarios
     if (Object.keys(patchUsuarios).length > 0) {
       const { error: dbErr } = await supabaseAdmin
         .from("usuarios")
@@ -244,7 +238,7 @@ export async function updateMe(req, res, next) {
       if (dbErr) return res.status(500).json({ ok: false, message: dbErr.message });
     }
 
-    // 3) Traer perfil actualizado + rol/sucursal nombre (para refrescar UI)
+    // 3) devolver perfil actualizado
     const { data: perfil, error: pErr } = await supabaseAdmin
       .from("usuarios")
       .select("id, auth_uid, nombre, email, rol_id, sucursal_id, activo")
@@ -287,6 +281,80 @@ export async function updateMe(req, res, next) {
         activo: perfil?.activo ?? true,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * ✅ NUEVO: PUT /api/auth/me/password
+ * Verifica contraseña actual (real) y luego actualiza a la nueva.
+ * Reglas: 8 a 12 caracteres.
+ */
+export async function updateMyPassword(req, res, next) {
+  try {
+    const { actual, nueva } = req.body || {};
+
+    if (!req.user?.auth_uid) {
+      return res.status(401).json({ ok: false, message: "No autorizado" });
+    }
+
+    // Validaciones
+    if (!actual || !nueva) {
+      return res.status(400).json({ ok: false, message: "Faltan datos (actual/nueva)" });
+    }
+
+    if (typeof actual !== "string" || typeof nueva !== "string") {
+      return res.status(400).json({ ok: false, message: "Formato inválido" });
+    }
+
+    const min = 8;
+    const max = 12;
+
+    if (nueva.length < min || nueva.length > max) {
+      return res
+        .status(400)
+        .json({ ok: false, message: `La nueva contraseña debe tener entre ${min} y ${max} caracteres` });
+    }
+
+    if (actual === nueva) {
+      return res.status(400).json({ ok: false, message: "La nueva contraseña debe ser distinta a la actual" });
+    }
+
+    // Necesitamos email para validar "actual"
+    const email = req.user.email;
+    if (!email) {
+      return res.status(400).json({ ok: false, message: "No se encontró el email del usuario" });
+    }
+
+    const supabaseAuth = getSupabaseAuthClient();
+    if (!supabaseAuth) {
+      return res.status(503).json({
+        ok: false,
+        message: "Cambio de contraseña no habilitado: falta SUPABASE_ANON_KEY en backend/.env",
+      });
+    }
+
+    // ✅ 1) Verificar contraseña actual REAL (login con password actual)
+    const { data: signData, error: signErr } = await supabaseAuth.auth.signInWithPassword({
+      email,
+      password: actual,
+    });
+
+    if (signErr || !signData?.session) {
+      return res.status(400).json({ ok: false, message: "La contraseña actual no es correcta" });
+    }
+
+    // ✅ 2) Actualizar password con Admin API
+    const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(req.user.auth_uid, {
+      password: nueva,
+    });
+
+    if (updErr) {
+      return res.status(400).json({ ok: false, message: updErr.message });
+    }
+
+    return res.json({ ok: true, message: "Contraseña actualizada" });
   } catch (err) {
     next(err);
   }
