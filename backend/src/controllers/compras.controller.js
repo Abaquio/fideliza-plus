@@ -53,7 +53,6 @@ async function getPuntosActualesCliente(clienteId) {
 
 /**
  * GET /api/compras
- * Lista compras con puntos_ganados calculado desde puntos_movimientos (tipo=ganado)
  */
 export const listarCompras = async (req, res) => {
   const { estado, sucursal_id, usuario_id, cliente_id, desde, hasta } = req.query || {};
@@ -138,7 +137,6 @@ export const metaCompras = async (req, res) => {
 
 /**
  * GET /api/compras/ajustes
- * ✅ Ahora lista movimientos tipo=ajuste y tipo=canje (para "Movimientos")
  */
 export const listarAjustes = async (req, res) => {
   const { desde, hasta, cliente_id, usuario_id } = req.query || {};
@@ -177,10 +175,6 @@ export const listarAjustes = async (req, res) => {
 
 /**
  * POST /api/compras/movimientos
- * ✅ Crea movimiento en puntos_movimientos (ajuste / canje)
- * - usuario_id viene del token (req.user.perfil_id)
- * - valida consistencia cupon_id según tipo
- * - evita dejar al cliente con puntos negativos
  */
 export const crearMovimiento = async (req, res) => {
   const { cliente_id, tipo, puntos, cupon_id, cupon_codigo } = req.body || {};
@@ -196,31 +190,25 @@ export const crearMovimiento = async (req, res) => {
   const usuarioId = req.user?.perfil_id ?? null;
   if (!usuarioId) return res.status(401).json({ ok: false, message: "No autorizado (sin perfil)" });
 
-  // Solo permitimos crear desde UI: ajuste y canje (por ahora)
   if (!["ajuste", "canje"].includes(tipoFinal)) {
     return res.status(400).json({ ok: false, message: "Solo se permite crear ajuste o canje desde esta acción" });
   }
 
-  // puntos
   let puntosFinal = parseNumber(puntos, NaN);
   if (!Number.isFinite(puntosFinal) || !Number.isInteger(puntosFinal)) {
     return res.status(400).json({ ok: false, message: "Puntos inválidos (entero)" });
   }
 
-  // Reglas por tipo
   if (tipoFinal === "ajuste") {
     if (puntosFinal === 0) {
       return res.status(400).json({ ok: false, message: "El ajuste no puede ser 0" });
     }
-    // consistencia cupon
     if (cupon_id) return res.status(400).json({ ok: false, message: "cupon_id debe ser null si no es canje" });
-    if (cupon_codigo) return res.status(400).json({ ok: false, message: "cupon_codigo debe ser null si no es canje" });
   }
 
   if (tipoFinal === "canje") {
     if (!cupon_id) return res.status(400).json({ ok: false, message: "cupon_id es obligatorio para canje" });
 
-    // obtén cupón y valida costo
     const { data: cup, error: cupErr } = await supabaseAdmin
       .from("cupones")
       .select("id, codigo, costo_puntos, estado")
@@ -236,17 +224,9 @@ export const crearMovimiento = async (req, res) => {
       return res.status(400).json({ ok: false, message: "Cupón con costo inválido" });
     }
 
-    // Forzamos puntos a ser negativo (canje descuenta)
     puntosFinal = -Math.abs(costoInt);
-
-    // snapshot del código
-    const snapshot = String(cupon_codigo || cup.codigo || "").trim() || null;
-    if (!snapshot) return res.status(400).json({ ok: false, message: "No se pudo obtener cupon_codigo" });
-
-    // OK, lo asignamos abajo en payload
   }
 
-  // evitar puntos negativos finales
   const puntosActuales = await getPuntosActualesCliente(cliente_id);
   const puntosResultado = puntosActuales + puntosFinal;
   if (puntosResultado < 0) {
@@ -256,20 +236,17 @@ export const crearMovimiento = async (req, res) => {
     });
   }
 
-  // payload DB
   const insert = {
     cliente_id,
     compra_id: null,
     tipo: tipoFinal,
     puntos: puntosFinal,
     usuario_id: usuarioId,
-    // creado_en default now()
     cupon_id: tipoFinal === "canje" ? cupon_id : null,
     cupon_codigo:
       tipoFinal === "canje" ? String(cupon_codigo || "").trim() || null : null,
   };
 
-  // Si canje y no viene cupon_codigo, intenta setearlo desde DB
   if (tipoFinal === "canje" && !insert.cupon_codigo) {
     const { data: cup2 } = await supabaseAdmin.from("cupones").select("codigo").eq("id", cupon_id).maybeSingle();
     insert.cupon_codigo = String(cup2?.codigo || "").trim() || null;
@@ -304,7 +281,6 @@ export const crearMovimiento = async (req, res) => {
 
 /**
  * POST /api/compras
- * (sin cambios)
  */
 export const crearCompra = async (req, res) => {
   const { cliente_id, sucursal_id, monto, estado, fecha_compra, numero_folio } = req.body || {};
@@ -372,7 +348,7 @@ export const crearCompra = async (req, res) => {
 };
 
 /**
- * PUT /api/compras/:id (sin cambios)
+ * PUT /api/compras/:id
  */
 export const actualizarCompra = async (req, res) => {
   const { id } = req.params;
@@ -452,7 +428,7 @@ export const actualizarCompra = async (req, res) => {
 };
 
 /**
- * DELETE /api/compras/:id (sin cambios)
+ * DELETE /api/compras/:id
  */
 export const eliminarCompra = async (req, res) => {
   const { id } = req.params;
@@ -463,4 +439,67 @@ export const eliminarCompra = async (req, res) => {
 
   if (error) return res.status(400).json({ ok: false, message: error.message });
   return res.json({ ok: true, message: "Compra eliminada correctamente" });
+};
+
+/* -------------------------------------------
+   ✅ NUEVO: EDITAR Y ELIMINAR MOVIMIENTOS
+   (Para habilitar el botón "Editar" y "Eliminar" en tabla movimientos)
+------------------------------------------- */
+
+/**
+ * PUT /api/compras/movimientos/:id
+ */
+export const actualizarMovimiento = async (req, res) => {
+  const { id } = req.params;
+  const { puntos, creado_en } = req.body || {};
+
+  const patch = {};
+
+  if (puntos !== undefined && puntos !== null && puntos !== "") {
+    const pt = Number(puntos);
+    if (!Number.isFinite(pt) || !Number.isInteger(pt)) {
+      return res.status(400).json({ ok: false, message: "Puntos inválidos (debe ser entero)" });
+    }
+    // Permitimos positivos o negativos (ajuste manual)
+    patch.puntos = pt;
+  }
+
+  if (creado_en !== undefined) {
+    patch.creado_en = creado_en ? toISO(creado_en) : null;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return res.json({ ok: true, message: "Sin cambios" });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("puntos_movimientos")
+    .update(patch)
+    .eq("id", id)
+    .select(
+      `
+      id, cliente_id, compra_id, tipo, puntos, usuario_id, creado_en, cupon_id, cupon_codigo,
+      clientes:cliente_id ( id, rut, nombres, apellidos ),
+      usuarios:usuario_id ( id, nombre, email )
+    `
+    )
+    .maybeSingle();
+
+  if (error) return res.status(400).json({ ok: false, message: error.message });
+  if (!data) return res.status(404).json({ ok: false, message: "Movimiento no encontrado" });
+
+  return res.json({ ok: true, message: "Movimiento actualizado", data });
+};
+
+/**
+ * DELETE /api/compras/movimientos/:id
+ */
+export const eliminarMovimiento = async (req, res) => {
+  const { id } = req.params;
+
+  const { error } = await supabaseAdmin.from("puntos_movimientos").delete().eq("id", id);
+
+  if (error) return res.status(400).json({ ok: false, message: error.message });
+
+  return res.json({ ok: true, message: "Movimiento eliminado correctamente" });
 };

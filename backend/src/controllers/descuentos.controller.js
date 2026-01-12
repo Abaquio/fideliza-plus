@@ -2,9 +2,9 @@ import { supabaseAdmin } from "../db/supabaseAdmin.js";
 
 /**
  * GET /api/descuentos
- * Lista cupones con join a clientes, compras y usuario creador (si existe)
  */
 export const listarCupones = async (req, res) => {
+  // Traemos todo, el frontend filtra visualmente
   const { data, error } = await supabaseAdmin
     .from("cupones")
     .select(`
@@ -29,10 +29,6 @@ export const listarCupones = async (req, res) => {
   return res.json({ ok: true, data: data || [] });
 };
 
-/**
- * GET /api/descuentos/meta
- * Para poblar selects (clientes)
- */
 export const metaDescuentos = async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from("clientes")
@@ -44,12 +40,6 @@ export const metaDescuentos = async (req, res) => {
   return res.json({ ok: true, clientes: data || [] });
 };
 
-/**
- * POST /api/descuentos
- * Crea cupón (cliente_id puede ser null)
- * usuario_id se asigna automático con el usuario logueado
- * costo_puntos: lo define quien crea el cupón
- */
 export const crearCupon = async (req, res) => {
   const { codigo, tipo_descuento, valor, costo_puntos, estado, vence_en, cliente_id } = req.body || {};
 
@@ -57,13 +47,12 @@ export const crearCupon = async (req, res) => {
     return res.status(400).json({ ok: false, message: "Faltan datos obligatorios" });
   }
 
-  // ✅ Nuevo: validar costo_puntos
   const costo = Number(costo_puntos ?? 0);
   if (!Number.isFinite(costo) || costo < 0) {
     return res.status(400).json({ ok: false, message: "Costo en puntos inválido" });
   }
 
-  const createdBy = req.user?.perfil_id ?? null; // staff logueado (public.usuarios.id)
+  const createdBy = req.user?.perfil_id ?? null;
 
   const payload = {
     codigo: String(codigo).trim(),
@@ -82,10 +71,6 @@ export const crearCupon = async (req, res) => {
   return res.status(201).json({ ok: true, message: "Cupón creado correctamente" });
 };
 
-/**
- * PUT /api/descuentos/:id
- * Actualiza cupón (no tocamos usuario_id aquí para no cambiar autor)
- */
 export const actualizarCupon = async (req, res) => {
   const { id } = req.params;
   const { codigo, tipo_descuento, valor, costo_puntos, estado, vence_en, cliente_id } = req.body || {};
@@ -97,7 +82,6 @@ export const actualizarCupon = async (req, res) => {
     patch.tipo_descuento = tipo_descuento.trim();
   if (valor !== undefined && valor !== null && valor !== "") patch.valor = Number(valor);
 
-  // ✅ Nuevo: permitir editar costo_puntos
   if (costo_puntos !== undefined && costo_puntos !== null && costo_puntos !== "") {
     const costo = Number(costo_puntos);
     if (!Number.isFinite(costo) || costo < 0) {
@@ -118,12 +102,17 @@ export const actualizarCupon = async (req, res) => {
 
 /**
  * DELETE /api/descuentos/:id
+ * ✅ SOFT DELETE: Cambia estado a 'eliminado' en vez de borrar row.
  */
 export const eliminarCupon = async (req, res) => {
   const { id } = req.params;
 
-  const { error } = await supabaseAdmin.from("cupones").delete().eq("id", id);
+  // Actualizamos el estado a 'eliminado'
+  const { error } = await supabaseAdmin
+    .from("cupones")
+    .update({ estado: "eliminado" })
+    .eq("id", id);
 
   if (error) return res.status(400).json({ ok: false, message: error.message });
-  return res.json({ ok: true, message: "Cupón eliminado correctamente" });
+  return res.json({ ok: true, message: "Cupón eliminado correctamente (soft delete)" });
 };

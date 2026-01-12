@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Plus, Gift, Percent, Calendar, Users } from "lucide-react"
+import { Plus, Gift, Percent, Calendar, Users, Filter, Trash2, RotateCcw } from "lucide-react"
 
 import CrearCuponModal from "./modales/CrearCuponModal"
 import ConfirmDialog from "../ui/confirm"
@@ -62,9 +62,17 @@ export default function Descuentos() {
   const [editingCupon, setEditingCupon] = useState(null)
   const [cupones, setCupones] = useState([])
 
+  // ✅ Filtro visual
+  const [filtroEstado, setFiltroEstado] = useState("activos") // activos | todos | eliminados
+
+  // Confirmaciones
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
+  const [confirmRestoreOpen, setConfirmRestoreOpen] = useState(false)
+  const [restoreTarget, setRestoreTarget] = useState(null)
+
+  // Toast
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoTitle, setValidadoTitle] = useState("")
   const [validadoMessage, setValidadoMessage] = useState("")
@@ -104,11 +112,26 @@ export default function Descuentos() {
     fetchCupones()
   }, [])
 
+  // ✅ Lógica de filtrado en frontend
+  const cuponesFiltrados = useMemo(() => {
+    return cupones.filter((c) => {
+      const st = String(c.estado || "").toLowerCase()
+      
+      if (filtroEstado === "eliminados") return st === "eliminado"
+      if (filtroEstado === "activos") return st !== "eliminado" 
+      if (filtroEstado === "todos") return true 
+      
+      return st !== "eliminado"
+    })
+  }, [cupones, filtroEstado])
+
   const stats = useMemo(() => {
-    const activos = cupones.filter((c) => String(c.estado).toLowerCase() === "activo").length
-    const usados = cupones.filter((c) => !!c.compra_id || String(c.estado).toLowerCase() === "usado")
-      .length
-    const porVencer = cupones.filter((c) => {
+    const validos = cupones.filter(c => String(c.estado).toLowerCase() !== "eliminado")
+
+    const activos = validos.filter((c) => String(c.estado).toLowerCase() === "activo").length
+    const usados = validos.filter((c) => !!c.compra_id || String(c.estado).toLowerCase() === "usado").length
+    
+    const porVencer = validos.filter((c) => {
       if (!c.vence_en) return false
       const d = new Date(c.vence_en)
       if (Number.isNaN(d.getTime())) return false
@@ -119,6 +142,7 @@ export default function Descuentos() {
     return { activos, usados, porVencer }
   }, [cupones])
 
+  // 🗑️ Eliminar (Soft Delete)
   const handleDelete = async (cupon) => {
     try {
       const API = getApiBase()
@@ -135,7 +159,7 @@ export default function Descuentos() {
       }
 
       fetchCupones()
-      showValidado("Cupón eliminado", "El cupón se eliminó correctamente.")
+      showValidado("Cupón eliminado", "El cupón se ha movido a la papelera.")
     } catch (e) {
       if (e?.status === 401 || e?.message === "UNAUTHORIZED") {
         handleUnauthorized()
@@ -143,6 +167,38 @@ export default function Descuentos() {
       }
       console.error(e)
       alert("No se pudo eliminar (revisa consola)")
+    }
+  }
+
+  // ♻️ Restaurar (Update estado -> activo)
+  const handleRestore = async (cupon) => {
+    try {
+      const API = getApiBase()
+      const token = getToken()
+
+      const { data } = await safeJsonFetch(`${API}/api/descuentos/${cupon.id}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ estado: "activo" }) // Restauramos a activo
+      })
+
+      if (!data.ok) {
+        alert(data.message || "No se pudo restaurar")
+        return
+      }
+
+      fetchCupones()
+      showValidado("Cupón restaurado", "El cupón está activo nuevamente.")
+    } catch (e) {
+      if (e?.status === 401 || e?.message === "UNAUTHORIZED") {
+        handleUnauthorized()
+        return
+      }
+      console.error(e)
+      alert("No se pudo restaurar (revisa consola)")
     }
   }
 
@@ -155,11 +211,12 @@ export default function Descuentos() {
         onClose={() => setValidadoOpen(false)}
       />
 
+      {/* Confirmar Eliminación */}
       <ConfirmDialog
         open={confirmDeleteOpen}
-        title="Confirmar eliminación"
-        message="¿Seguro que quieres eliminar este cupón?"
-        confirmLabel="Sí, eliminar"
+        title="Mover a papelera"
+        message="El cupón quedará inactivo. Podrás restaurarlo desde el filtro 'Papelera'."
+        confirmLabel="Sí, mover"
         cancelLabel="Cancelar"
         onCancel={() => {
           setConfirmDeleteOpen(false)
@@ -173,22 +230,58 @@ export default function Descuentos() {
         }}
       />
 
+      {/* Confirmar Restauración */}
+      <ConfirmDialog
+        open={confirmRestoreOpen}
+        title="Restaurar Cupón"
+        message="El cupón volverá a estar activo y podrá ser canjeado por los clientes."
+        confirmLabel="Sí, restaurar"
+        cancelLabel="Cancelar"
+        onCancel={() => {
+          setConfirmRestoreOpen(false)
+          setRestoreTarget(null)
+        }}
+        onConfirm={() => {
+          const target = restoreTarget
+          setConfirmRestoreOpen(false)
+          setRestoreTarget(null)
+          if (target) handleRestore(target)
+        }}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold mb-2">Descuentos y Cupones</h1>
           <p className="text-muted-foreground">Crea y gestiona cupones canjeables por puntos</p>
         </div>
-        <button
-          onClick={() => {
-            setEditingCupon(null)
-            setShowModal(true)
-          }}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-lg flex items-center gap-2 transition-smooth shadow-lg shadow-primary/20"
-        >
-          <Plus className="w-5 h-5" />
-          Crear Cupón
-        </button>
+        
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          {/* ✅ Filtro Dropdown */}
+          <div className="relative">
+            <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <select 
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+              className="pl-9 pr-8 py-2.5 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer hover:bg-muted/50 transition-colors appearance-none"
+            >
+              <option value="activos">Visibles</option>
+              <option value="eliminados">Papelera</option>
+              <option value="todos">Todo el historial</option>
+            </select>
+          </div>
+
+          <button
+            onClick={() => {
+              setEditingCupon(null)
+              setShowModal(true)
+            }}
+            className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-smooth shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-5 h-5" />
+            Crear Cupón
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -226,111 +319,138 @@ export default function Descuentos() {
         </div>
       </div>
 
-      {/* Cupones */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {cupones.map((cupon, index) => {
-          const status = String(cupon.estado || "").toLowerCase()
-          const isExpired = status === "expirado"
-          const isActive = status === "activo"
+      {/* Cupones Grid */}
+      {cuponesFiltrados.length === 0 ? (
+        <div className="text-center py-12 bg-muted/20 border border-dashed border-border rounded-xl">
+          <p className="text-muted-foreground">
+            {filtroEstado === "eliminados" 
+              ? "La papelera está vacía." 
+              : "No hay cupones para mostrar."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {cuponesFiltrados.map((cupon, index) => {
+            const status = String(cupon.estado || "").toLowerCase()
+            const isExpired = status === "expirado" || status === "vencido"
+            const isDeleted = status === "eliminado"
+            const isActive = status === "activo"
 
-          const createdBy = cupon.usuarios?.nombre || cupon.usuarios?.email || "—"
+            const createdBy = cupon.usuarios?.nombre || cupon.usuarios?.email || "—"
+            const usado = !!cupon.compra_id || status === "canjeado" || status === "usado"
+            const usedCount = usado ? 1 : 0
 
-          const usado = !!cupon.compra_id || status === "usado"
-          const usedCount = usado ? 1 : 0
-
-          return (
-            <div
-              key={cupon.id}
-              className={`
-                bg-gradient-to-br from-card via-card to-muted/20
-                border border-border rounded-xl p-6 hover-lift animate-scale-in
-                ${isExpired ? "opacity-60" : ""}
-              `}
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center">
-                    <Gift className="w-6 h-6 text-white" />
+            return (
+              <div
+                key={cupon.id}
+                className={`
+                  relative border border-border rounded-xl p-6 hover-lift animate-scale-in transition-all
+                  ${isDeleted ? "bg-red-50/50 border-red-100 opacity-80" : "bg-gradient-to-br from-card via-card to-muted/20"}
+                  ${isExpired ? "opacity-70" : ""}
+                `}
+                style={{ animationDelay: `${index * 0.05}s` }}
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isDeleted ? "bg-red-100" : "bg-gradient-to-br from-primary to-accent"}`}>
+                      {isDeleted ? <Trash2 className="w-6 h-6 text-red-500" /> : <Gift className="w-6 h-6 text-white" />}
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold font-mono decoration-dotted">{cupon.codigo}</h3>
+                      <span
+                        className={`inline-block px-2 py-0.5 text-xs rounded-full uppercase font-semibold tracking-wide ${
+                          isDeleted ? "bg-red-100 text-red-600" :
+                          isActive ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {status}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold font-mono">{cupon.codigo}</h3>
-                    <span
-                      className={`inline-block px-2 py-0.5 text-xs rounded-full ${
-                        isActive ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                      }`}
+                  <div className="text-right">
+                    <p className={`text-3xl font-bold ${isDeleted ? "text-muted-foreground line-through" : "text-primary"}`}>
+                      {formatDescuento(cupon.tipo_descuento, cupon.valor)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">descuento</p>
+                  </div>
+                </div>
+
+                {/* Detalles */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Creado por</p>
+                    <p className="text-sm font-bold line-clamp-1">{createdBy}</p>
+                  </div>
+
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Costo</p>
+                    <p className="text-lg font-bold">{Number(cupon.costo_puntos || 0)} pts</p>
+                  </div>
+                </div>
+
+                {/* Uso */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-muted-foreground">Progreso</span>
+                    <span className="font-medium">{usado ? "Canjeado" : "Disponible"}</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-500 ${isDeleted ? "bg-red-300" : "bg-gradient-to-r from-primary to-accent"}`}
+                      style={{ width: usado ? "100%" : "0%" }}
+                    />
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-4 border-t border-border">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="w-4 h-4" />
+                    <span>Vence: {formatFecha(cupon.vence_en)}</span>
+                  </div>
+                  
+                  {isDeleted ? (
+                    // ✅ BOTÓN RESTAURAR (Solo si eliminado)
+                    <button
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200"
+                      onClick={() => {
+                        setRestoreTarget(cupon)
+                        setConfirmRestoreOpen(true)
+                      }}
                     >
-                      {isActive ? "Activo" : cupon.estado}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold text-primary">
-                    {formatDescuento(cupon.tipo_descuento, cupon.valor)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">descuento</p>
-                </div>
-              </div>
-
-              {/* Detalles */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Creado por</p>
-                  <p className="text-sm font-bold line-clamp-1">{createdBy}</p>
-                </div>
-
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Costo</p>
-                  <p className="text-lg font-bold">{Number(cupon.costo_puntos || 0)} pts</p>
-                </div>
-              </div>
-
-              {/* Uso */}
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Uso</span>
-                  <span className="font-medium">Usos: {usedCount}</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-primary to-accent h-full transition-all duration-500"
-                    style={{ width: usado ? "100%" : "0%" }}
-                  />
+                      <RotateCcw className="w-4 h-4" />
+                      Restaurar
+                    </button>
+                  ) : (
+                    // ✅ BOTONES NORMALES (Si activo)
+                    <div className="flex gap-2">
+                      <button
+                        className="px-3 py-1 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                        onClick={() => {
+                          setEditingCupon(cupon)
+                          setShowModal(true)
+                        }}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="px-3 py-1 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                        onClick={() => {
+                          setDeleteTarget(cupon)
+                          setConfirmDeleteOpen(true)
+                        }}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between pt-4 border-t border-border">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Calendar className="w-4 h-4" />
-                  <span>Vence: {formatFecha(cupon.vence_en)}</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    className="px-3 py-1 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
-                    onClick={() => {
-                      setEditingCupon(cupon)
-                      setShowModal(true)
-                    }}
-                  >
-                    Editar
-                  </button>
-                  <button
-                    className="px-3 py-1 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                    onClick={() => {
-                      setDeleteTarget(cupon)
-                      setConfirmDeleteOpen(true)
-                    }}
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Modal */}
       <CrearCuponModal

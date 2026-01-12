@@ -8,7 +8,9 @@ import {
   actualizarCompra,
   eliminarCompra,
   listarAjustes,
-  crearMovimiento, // ✅ NUEVO
+  crearMovimiento,
+  actualizarMovimiento, // 👈 IMPORTADO
+  eliminarMovimiento,   // 👈 IMPORTADO
 } from "../controllers/compras.controller.js";
 
 const router = Router();
@@ -18,18 +20,32 @@ router.use(authMiddleware);
 router.get("/", requireRoles("Administrador", "Supervisor", "Vendedor"), listarCompras);
 router.get("/meta", requireRoles("Administrador", "Supervisor", "Vendedor"), metaCompras);
 
-// ✅ Ajustes manuales (puntos_movimientos tipo=ajuste) + ahora también canje si ya lo ajustaste en controller
+// Ajustes manuales
 router.get("/ajustes", requireRoles("Administrador", "Supervisor", "Vendedor"), listarAjustes);
 
-// ✅ NUEVO: crear movimiento (ajuste / canje)
+// Crear movimiento
 router.post(
   "/movimientos",
   requireRoles("Administrador", "Supervisor", "Vendedor"),
   crearMovimiento
 );
 
-router.post("/", requireRoles("Administrador", "Supervisor", "Vendedor"), crearCompra);
+// ✅ NUEVO: Editar movimiento
+router.put(
+  "/movimientos/:id",
+  requireRoles("Administrador", "Supervisor"),
+  actualizarMovimiento
+);
 
+// ✅ NUEVO: Eliminar movimiento
+router.delete(
+  "/movimientos/:id",
+  requireRoles("Administrador", "Supervisor"),
+  eliminarMovimiento
+);
+
+// Compras
+router.post("/", requireRoles("Administrador", "Supervisor", "Vendedor"), crearCompra);
 router.put("/:id", requireRoles("Administrador", "Supervisor"), actualizarCompra);
 router.delete("/:id", requireRoles("Administrador", "Supervisor"), eliminarCompra);
 
