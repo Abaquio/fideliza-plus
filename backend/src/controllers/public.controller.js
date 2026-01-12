@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "../db/supabaseAdmin.js";
+// ✅ IMPORTAR SERVICIO DE EMAIL
+import { enviarCorreoBienvenidaCliente } from "../services/email.service.js";
 
 /**
  * Helper para obtener o crear la fuente "Medical Season"
@@ -6,7 +8,6 @@ import { supabaseAdmin } from "../db/supabaseAdmin.js";
 async function getFuenteMedicalSeason() {
   const NOMBRE_FUENTE = "Medical Season";
 
-  // 1. Buscar si existe
   const { data: existente } = await supabaseAdmin
     .from("fuentes_clientes")
     .select("id")
@@ -16,7 +17,6 @@ async function getFuenteMedicalSeason() {
 
   if (existente?.id) return existente.id;
 
-  // 2. Si no existe, crearla
   const { data: nueva, error } = await supabaseAdmin
     .from("fuentes_clientes")
     .insert({
@@ -48,7 +48,6 @@ export const registrarClientePublico = async (req, res) => {
       return res.status(400).json({ ok: false, message: "Faltan datos obligatorios." });
     }
 
-    // 1. Normalizar RUT
     const raw = String(rut).toUpperCase().replace(/[^0-9K]/g, "");
     if (raw.length < 2) {
       return res.status(400).json({ ok: false, message: "RUT inválido" });
@@ -57,10 +56,9 @@ export const registrarClientePublico = async (req, res) => {
     const dv = raw.slice(-1);
     const rutFormat = `${cuerpo}-${dv}`;
 
-    // 2. Obtener Fuente ID
     const fuenteId = await getFuenteMedicalSeason();
 
-    // 3. Verificar existencia
+    // Verificar existencia
     const { data: existente } = await supabaseAdmin
       .from("clientes")
       .select("id, estado")
@@ -75,7 +73,7 @@ export const registrarClientePublico = async (req, res) => {
         });
       }
       
-      // Reactivar si estaba eliminado
+      // Reactivar
       await supabaseAdmin
         .from("clientes")
         .update({ 
@@ -88,10 +86,13 @@ export const registrarClientePublico = async (req, res) => {
         })
         .eq('id', existente.id);
         
+      // ✅ ENVIAR CORREO DE REACTIVACIÓN (Opcional, reutilizamos el de bienvenida)
+      enviarCorreoBienvenidaCliente(email, nombres);
+
       return res.json({ ok: true, message: "¡Tu cuenta ha sido reactivada exitosamente!" });
     }
 
-    // 4. Configuración Puntos Bienvenida
+    // Configuración Puntos
     const { data: config } = await supabaseAdmin
       .from("configuracion")
       .select("puntos_bienvenida")
@@ -100,8 +101,7 @@ export const registrarClientePublico = async (req, res) => {
 
     const puntosRegalo = config?.puntos_bienvenida || 0;
 
-    // 5. Crear Cliente
-    // 🔥 CORRECCIÓN: Quitamos 'puntos_total' porque es una columna calculada, no real.
+    // Crear Cliente
     const { data: nuevoCliente, error } = await supabaseAdmin
       .from("clientes")
       .insert({
@@ -117,13 +117,13 @@ export const registrarClientePublico = async (req, res) => {
       .single();
 
     if (error) {
-      if (error.code === '23505') { // unique violation
+      if (error.code === '23505') {
         return res.status(409).json({ ok: false, message: "El usuario ya existe." });
       }
-      throw error; // Lanza al catch general
+      throw error;
     }
 
-    // 6. Asignar Puntos
+    // Asignar Puntos
     if (puntosRegalo > 0 && nuevoCliente) {
       await supabaseAdmin.from("puntos_movimientos").insert({
         cliente_id: nuevoCliente.id,
@@ -133,14 +133,22 @@ export const registrarClientePublico = async (req, res) => {
       });
     }
 
+    // ✅ ENVIAR CORREO DE BIENVENIDA
+    // No usamos await para que la respuesta al usuario sea instantánea
+    enviarCorreoBienvenidaCliente(email, nombres)
+      .then(sent => {
+        if(sent) console.log(`📧 Correo enviado a ${email}`);
+        else console.warn(`⚠️ No se pudo enviar correo a ${email}`);
+      })
+      .catch(err => console.error("Error envío mail:", err));
+
     return res.status(201).json({ 
       ok: true, 
-      message: `¡Registro exitoso! Ganaste ${puntosRegalo} puntos de bienvenida.` 
+      message: `¡Registro exitoso! Ganaste ${puntosRegalo} puntos de bienvenida. Revisa tu correo.` 
     });
 
   } catch (error) {
     console.error("Error registro público:", error);
-    // Devolvemos el mensaje exacto para debug si estamos en desarrollo, o uno genérico
     return res.status(500).json({ 
       ok: false, 
       message: error.message || "Error interno al registrar." 

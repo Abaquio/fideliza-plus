@@ -5,7 +5,7 @@ import { CheckCircle, Gift, Loader2, AlertTriangle, AlertCircle } from "lucide-r
 
 // ✅ Usamos las funciones actualizadas
 import {
-  normalizarRut, // Usamos normalizarRut que es la estándar
+  normalizarRut, 
   validarRut,
   limpiarNombreLive,
   validarEmail,
@@ -50,7 +50,6 @@ export default function RegistroPublico() {
     // --- Lógica de Input Mask ---
     
     if (name === "rut") {
-      // Usamos normalizarRut que ahora es segura
       finalValue = normalizarRut(value)
       
       if (finalValue.length > 7) {
@@ -60,7 +59,6 @@ export default function RegistroPublico() {
       }
     } 
     else if (name === "nombres" || name === "apellidos") {
-      // Limpieza segura de caracteres
       finalValue = limpiarNombreLive(value)
     }
     else if (name === "email") {
@@ -69,9 +67,13 @@ export default function RegistroPublico() {
       }
     }
     else if (name === "telefono") {
-      if (value.length > 4) {
-         const check = validarYNormalizarTelefono(value)
-         if (!check.valido) errorMsg = "Mínimo 8 dígitos"
+      // ✅ FIX: Solo permitir números, espacios y +
+      finalValue = value.replace(/[^0-9+\s]/g, "")
+
+      // Validación en tiempo real (si es muy corto)
+      if (finalValue.length > 4) {
+         const { valido } = validarYNormalizarTelefono(finalValue)
+         if (!valido) errorMsg = "Mínimo 8 dígitos"
       }
     }
 
@@ -95,6 +97,7 @@ export default function RegistroPublico() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
+    // Validaciones Bloqueantes
     if (!validarRut(form.rut)) {
       setGeneralError("El RUT ingresado no es válido.")
       return
@@ -107,6 +110,18 @@ export default function RegistroPublico() {
       setGeneralError("El correo electrónico no es válido.")
       return
     }
+    // ✅ Validación Teléfono Obligatorio
+    if (!form.telefono || form.telefono.trim().length < 8) {
+      setGeneralError("El teléfono es obligatorio y debe ser válido.")
+      setErrors(p => ({ ...p, telefono: "Campo obligatorio" }))
+      return
+    }
+    const telCheck = validarYNormalizarTelefono(form.telefono)
+    if (!telCheck.valido) {
+      setGeneralError("El formato del teléfono es incorrecto.")
+      setErrors(p => ({ ...p, telefono: "Formato inválido" }))
+      return
+    }
 
     setLoading(true)
     setGeneralError("")
@@ -117,7 +132,8 @@ export default function RegistroPublico() {
         nombres: form.nombres.trim(),
         apellidos: form.apellidos.trim(),
         email: form.email.trim(),
-        telefono: form.telefono.trim()
+        // Enviamos el teléfono limpio y normalizado
+        telefono: telCheck.valor
       }
 
       const res = await fetch(`${API_URL}/api/public/registro`, {
@@ -253,13 +269,17 @@ export default function RegistroPublico() {
             )}
           </div>
 
+          {/* ✅ Teléfono OBLIGATORIO */}
           <div>
-            <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Teléfono (Opcional)</label>
+            <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Teléfono</label>
             <input
               name="telefono"
               type="tel"
               value={form.telefono}
               onChange={handleChange}
+              onFocus={() => {
+                 if (!form.telefono) setForm(prev => ({...prev, telefono: "+56"}))
+              }}
               placeholder="+56 9 ..."
               className={getInputClass(!!errors.telefono)}
             />
