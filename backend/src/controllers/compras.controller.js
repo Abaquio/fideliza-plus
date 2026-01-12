@@ -446,26 +446,49 @@ export const eliminarCompra = async (req, res) => {
    (Para habilitar el botón "Editar" y "Eliminar" en tabla movimientos)
 ------------------------------------------- */
 
-/**
- * PUT /api/compras/movimientos/:id
- */
+/* -------------------------------------------
+   ✅ NUEVO: EDITAR Y ELIMINAR MOVIMIENTOS
+------------------------------------------- */
+
 export const actualizarMovimiento = async (req, res) => {
   const { id } = req.params;
-  const { puntos, creado_en } = req.body || {};
+  const { puntos, creado_en, cupon_id } = req.body || {};
 
   const patch = {};
 
+  // 1. Puntos
   if (puntos !== undefined && puntos !== null && puntos !== "") {
     const pt = Number(puntos);
     if (!Number.isFinite(pt) || !Number.isInteger(pt)) {
       return res.status(400).json({ ok: false, message: "Puntos inválidos (debe ser entero)" });
     }
-    // Permitimos positivos o negativos (ajuste manual)
     patch.puntos = pt;
   }
 
+  // 2. Fecha
   if (creado_en !== undefined) {
     patch.creado_en = creado_en ? toISO(creado_en) : null;
+  }
+
+  // 3. Cupón (Nuevo)
+  if (cupon_id !== undefined) {
+    if (cupon_id === null) {
+      patch.cupon_id = null;
+      patch.cupon_codigo = null; // Si quitas cupón, quitas el código
+    } else {
+      // Buscar código del nuevo cupón para actualizar el snapshot
+      const { data: cup, error: cupErr } = await supabaseAdmin
+        .from("cupones")
+        .select("id, codigo")
+        .eq("id", cupon_id)
+        .maybeSingle();
+
+      if (cupErr || !cup) {
+        return res.status(400).json({ ok: false, message: "Cupón no válido o no encontrado" });
+      }
+      patch.cupon_id = cup.id;
+      patch.cupon_codigo = cup.codigo;
+    }
   }
 
   if (Object.keys(patch).length === 0) {
@@ -480,7 +503,8 @@ export const actualizarMovimiento = async (req, res) => {
       `
       id, cliente_id, compra_id, tipo, puntos, usuario_id, creado_en, cupon_id, cupon_codigo,
       clientes:cliente_id ( id, rut, nombres, apellidos ),
-      usuarios:usuario_id ( id, nombre, email )
+      usuarios:usuario_id ( id, nombre, email ),
+      cupones:cupon_id ( id, codigo, tipo_descuento, valor )
     `
     )
     .maybeSingle();
@@ -491,15 +515,10 @@ export const actualizarMovimiento = async (req, res) => {
   return res.json({ ok: true, message: "Movimiento actualizado", data });
 };
 
-/**
- * DELETE /api/compras/movimientos/:id
- */
+// ... eliminarMovimiento se mantiene igual
 export const eliminarMovimiento = async (req, res) => {
   const { id } = req.params;
-
   const { error } = await supabaseAdmin.from("puntos_movimientos").delete().eq("id", id);
-
   if (error) return res.status(400).json({ ok: false, message: error.message });
-
   return res.json({ ok: true, message: "Movimiento eliminado correctamente" });
 };

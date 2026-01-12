@@ -53,8 +53,7 @@ export default function NuevoMovimientoModal({
 
   const normalize = (s) => String(s || "").trim().toLowerCase()
 
-  // 🔥 CORRECCIÓN: Filtramos primero solo los clientes ACTIVOS
-  // Así evitamos que aparezcan bloqueados o eliminados en la búsqueda
+  // Filtramos primero solo los clientes ACTIVOS
   const clientesActivos = useMemo(() => {
     return clientes.filter((c) => normalize(c.estado) === "activo")
   }, [clientes])
@@ -62,7 +61,6 @@ export default function NuevoMovimientoModal({
   const clientesFiltrados = useMemo(() => {
     const q = normalize(clienteQuery)
     if (!q) return []
-    // Usamos la lista filtrada de activos
     return clientesActivos
       .filter((c) => {
         const nombre = normalize(`${c.nombres || ""} ${c.apellidos || ""}`)
@@ -72,23 +70,20 @@ export default function NuevoMovimientoModal({
       .slice(0, 8)
   }, [clientesActivos, clienteQuery])
 
-  // ✅ mejor match (si hay uno claro)
+  // mejor match (si hay uno claro)
   const mejorMatch = useMemo(() => {
     const q = normalize(clienteQuery)
     if (!q) return null
 
-    // 1) match exacto por rut (usando solo activos)
     const exactRut = clientesActivos.find((c) => normalize(c.rut) === q)
     if (exactRut) return exactRut
 
-    // 2) match exacto por nombre completo (usando solo activos)
     const exactNombre = clientesActivos.find((c) => {
       const nombre = normalize(`${c.nombres || ""} ${c.apellidos || ""}`)
       return nombre === q
     })
     if (exactNombre) return exactNombre
 
-    // 3) si solo hay 1 resultado filtrado, usarlo como match
     if (clientesFiltrados.length === 1) return clientesFiltrados[0]
 
     return null
@@ -98,7 +93,6 @@ export default function NuevoMovimientoModal({
     return clientes.find((c) => c.id === clienteId) || null
   }, [clientes, clienteId])
 
-  // ✅ puntos actuales toman el del cliente seleccionado si viene en data (puntos_total)
   const puntosActualesNum = useMemo(() => {
     const fromCliente = Number(clienteSeleccionado?.puntos_total)
     if (Number.isFinite(fromCliente)) return fromCliente
@@ -107,9 +101,28 @@ export default function NuevoMovimientoModal({
     return Number.isFinite(fallback) ? fallback : 0
   }, [clienteSeleccionado, puntosActuales])
 
+  // 🔥 NUEVO: Filtrar cupones válidos (Activos y no vencidos)
+  const cuponesDisponibles = useMemo(() => {
+    const now = new Date()
+    return cupones.filter((c) => {
+      // 1. Debe estar activo
+      const estado = String(c.estado || "").toLowerCase()
+      if (estado !== "activo") return false
+
+      // 2. Si tiene fecha de vencimiento, no debe haber pasado
+      if (c.vence_en) {
+        const vence = new Date(c.vence_en)
+        if (!Number.isNaN(vence.getTime()) && vence < now) {
+          return false // Ya venció
+        }
+      }
+      return true
+    })
+  }, [cupones])
+
   const cuponSeleccionado = useMemo(() => {
-    return cupones.find((c) => c.id === cuponId) || null
-  }, [cupones, cuponId])
+    return cuponesDisponibles.find((c) => c.id === cuponId) || null
+  }, [cuponesDisponibles, cuponId])
 
   const ajusteCantidadNum = useMemo(() => {
     const n = Number(ajusteCantidad)
@@ -118,7 +131,6 @@ export default function NuevoMovimientoModal({
     return Math.max(0, Math.trunc(n))
   }, [ajusteCantidad])
 
-  // ✅ delta correcto
   const puntosDelta = useMemo(() => {
     if (tipo === "ajuste") {
       if (!ajusteCantidadNum) return 0
@@ -181,7 +193,6 @@ export default function NuevoMovimientoModal({
   const selectCliente = (c) => {
     if (!c?.id) return
     setClienteId(c.id)
-    // dejar el input con el nombre+rut para que se vea “el cliente” y no un listado
     const nombre = `${c.nombres || ""} ${c.apellidos || ""}`.trim() || "Sin nombre"
     setClienteQuery(`${nombre} — ${c.rut || ""}`.trim())
     setShowSuggest(false)
@@ -189,13 +200,11 @@ export default function NuevoMovimientoModal({
     setSubmitError("")
   }
 
-  // ✅ cuando hay match claro, autoselecciona (pero solo si aún no eligió uno)
   useEffect(() => {
     if (!open) return
     if (clienteId) return
     if (!mejorMatch) return
 
-    // no autoseleccionar si el usuario recién está escribiendo algo muy corto
     const q = normalize(clienteQuery)
     if (q.length < 4) return
 
@@ -210,8 +219,8 @@ export default function NuevoMovimientoModal({
 
     const payload = {
       cliente_id: clienteId,
-      tipo, // 'ajuste' | 'canje'
-      puntos: puntosDelta, // ✅ entero con signo
+      tipo, 
+      puntos: puntosDelta, 
       cupon_id: tipo === "canje" ? cuponId : null,
       cupon_codigo:
         tipo === "canje"
@@ -222,8 +231,6 @@ export default function NuevoMovimientoModal({
     try {
       if (onSubmit) {
         await onSubmit(payload)
-      } else {
-        console.log("Nuevo movimiento payload:", payload)
       }
       handleClose()
     } catch (e) {
@@ -235,10 +242,8 @@ export default function NuevoMovimientoModal({
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-      {/* overlay */}
       <div className="absolute inset-0 bg-black/40" onClick={handleClose} aria-hidden="true" />
 
-      {/* modal */}
       <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
         {/* header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
@@ -258,7 +263,7 @@ export default function NuevoMovimientoModal({
 
         {/* body */}
         <div className="px-5 py-4 max-h-[75vh] overflow-y-auto space-y-5">
-          {/* puntos actuales + preview */}
+          {/* Puntos actuales */}
           <div className="bg-muted/40 border border-border rounded-xl p-4">
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
               <div>
@@ -284,15 +289,10 @@ export default function NuevoMovimientoModal({
                 </div>
               </div>
             </div>
-
-            <div className="mt-3 text-sm text-muted-foreground">
-              Si no completas el formulario, no se crea ningún movimiento.
-            </div>
           </div>
 
-          {/* tipo + cliente */}
+          {/* Tipo + Cliente */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* tipo */}
             <div>
               <label className="text-sm font-medium flex items-center gap-2">
                 <FilterIcon />
@@ -302,12 +302,9 @@ export default function NuevoMovimientoModal({
               <select
                 value={tipo}
                 onChange={(e) => {
-                  const next = e.target.value
-                  setTipo(next)
+                  setTipo(e.target.value)
                   setTouched(true)
                   setSubmitError("")
-
-                  // reset dependientes
                   setAjusteOperacion("sumar")
                   setAjusteCantidad("")
                   setCuponId("")
@@ -323,7 +320,6 @@ export default function NuevoMovimientoModal({
               </select>
             </div>
 
-            {/* cliente autocomplete */}
             <div className="relative">
               <label className="text-sm font-medium flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
@@ -338,21 +334,18 @@ export default function NuevoMovimientoModal({
                   setTouched(true)
                   setSubmitError("")
                   setShowSuggest(true)
-                  // si empieza a escribir de nuevo, "desselecciona" para permitir búsqueda real
                   if (clienteId) setClienteId("")
                 }}
                 onFocus={() => {
                   if (normalize(clienteQuery)) setShowSuggest(true)
                 }}
                 onBlur={() => {
-                  // pequeño delay para permitir click en sugerencias
                   setTimeout(() => setShowSuggest(false), 120)
                 }}
                 placeholder="Escribe RUT o nombre..."
                 className="mt-2 w-full px-3 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               />
 
-              {/* ✅ Coincidencia (sin listado fijo abajo) */}
               {!clienteId && mejorMatch && (
                 <button
                   type="button"
@@ -361,14 +354,13 @@ export default function NuevoMovimientoModal({
                   className="mt-2 w-full text-left px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted/60 transition-colors"
                 >
                   <div className="text-sm font-medium">
-                    {" "}
+                    Coincidencia:{" "}
                     {`${mejorMatch.nombres || ""} ${mejorMatch.apellidos || ""}`.trim() || "Sin nombre"}
                   </div>
                   <div className="text-xs text-muted-foreground">{mejorMatch.rut}</div>
                 </button>
               )}
 
-              {/* ✅ sugerencias flotantes (solo mientras escribe / foco) */}
               {showSuggest && !clienteId && clientesFiltrados.length > 1 && (
                 <div className="absolute z-10 mt-2 w-full rounded-xl border border-border bg-card shadow-xl overflow-hidden">
                   {clientesFiltrados.map((c) => {
@@ -396,8 +388,6 @@ export default function NuevoMovimientoModal({
                     {`${clienteSeleccionado?.nombres || ""} ${clienteSeleccionado?.apellidos || ""}`.trim() ||
                       "Sin nombre"}
                   </span>
-                  {" · "}
-                  {clienteSeleccionado?.email || "sin email"}
                 </div>
               )}
             </div>
@@ -435,27 +425,12 @@ export default function NuevoMovimientoModal({
                     inputMode="numeric"
                     className="mt-2 w-full px-3 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Ingresa un número entero. Para descontar, el cliente debe tener puntos suficientes.
-                  </p>
                 </div>
               </div>
-
-              {ajusteOperacion === "sumar" ? (
-                <div className="mt-3 text-sm text-muted-foreground flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  Se sumarán <span className="font-medium text-foreground">{ajusteCantidadNum || 0}</span> puntos.
-                </div>
-              ) : (
-                <div className="mt-3 text-sm text-muted-foreground flex items-center gap-2">
-                  <Minus className="w-4 h-4" />
-                  Se descontarán <span className="font-medium text-foreground">{ajusteCantidadNum || 0}</span> puntos.
-                </div>
-              )}
             </div>
           )}
 
-          {/* Canje (solo si tipo=canje) */}
+          {/* Canje */}
           {tipo === "canje" && (
             <div className="bg-card border border-border rounded-xl p-4 space-y-3">
               <div>
@@ -474,7 +449,8 @@ export default function NuevoMovimientoModal({
                   className="mt-2 w-full px-3 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Selecciona un cupón</option>
-                  {cupones.map((c) => (
+                  {/* 🔥 AQUI USAMOS EL FILTRADO */}
+                  {cuponesDisponibles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.codigo} — {c.tipo_descuento} ({c.valor}) — costo {c.costo_puntos} pts
                     </option>
@@ -482,11 +458,10 @@ export default function NuevoMovimientoModal({
                 </select>
 
                 <p className="mt-2 text-xs text-muted-foreground">
-                  El canje descuenta automáticamente el costo_puntos del cupón.
+                  Solo se muestran cupones activos y vigentes.
                 </p>
               </div>
 
-              {/* snapshot opcional */}
               <div>
                 <label className="text-sm font-medium">Código (snapshot)</label>
                 <input
@@ -499,9 +474,6 @@ export default function NuevoMovimientoModal({
                   className="mt-2 w-full px-3 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   disabled={!!cuponSeleccionado?.codigo}
                 />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Si el cupón ya tiene código, se usa ese. Esto queda guardado en el movimiento.
-                </p>
               </div>
 
               {cuponSeleccionado && (
@@ -510,8 +482,7 @@ export default function NuevoMovimientoModal({
                   <span className="font-medium text-foreground">
                     {Number(cuponSeleccionado.costo_puntos || 0)}
                   </span>{" "}
-                  puntos por el cupón{" "}
-                  <span className="font-medium text-foreground">{cuponSeleccionado.codigo}</span>.
+                  puntos.
                 </div>
               )}
             </div>

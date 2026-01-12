@@ -609,7 +609,7 @@ export default function Compras() {
 
       {/* Modales */}
       <RegistrarCompraModal open={showRegistrar} onClose={() => setShowRegistrar(false)} onSubmit={handleRegistrarCompra} clientes={clientes} sucursales={sucursales} config={config} />
-      <DetallesCompraModal open={showDetalles} onClose={() => setShowDetalles(false)} compra={compraSeleccionada} sucursales={sucursales} onUpdate={handleUpdateCompra} />
+      <DetallesCompraModal open={showDetalles} onClose={() => setShowDetalles(false)} compra={compraSeleccionada} sucursales={sucursales} onUpdate={handleUpdateCompra} cupones={cupones} />
       <NuevoMovimientoModal open={showNuevoMovimiento} onClose={() => setShowNuevoMovimiento(false)} clientes={clientesConPuntos.length ? clientesConPuntos : clientes} cupones={cupones} puntosActuales={0} onSubmit={handleCrearMovimiento} />
       
       {/* ✅ NUEVO MODAL MOVIMIENTO */}

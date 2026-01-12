@@ -1,9 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { X, Pencil, Save, Ban, Calendar, User, Ticket } from "lucide-react"
 
-// Ajusta las rutas según donde tengas tus componentes UI
 import ConfirmDialog from "../../ui/confirm"
 import ValidadoCard from "../../ui/validado"
 
@@ -14,35 +13,23 @@ function formatFecha(fechaISO) {
   return d.toLocaleString("es-CL")
 }
 
-function toDatetimeLocalValue(iso) {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, "0")
-  const dd = String(d.getDate()).padStart(2, "0")
-  const hh = String(d.getHours()).padStart(2, "0")
-  const min = String(d.getMinutes()).padStart(2, "0")
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}`
-}
-
 function safeLower(s) {
   return String(s || "").toLowerCase()
 }
 
-export default function DetallesMovimientoModal({ open, onClose, movimiento, onUpdate }) {
+export default function DetallesMovimientoModal({ open, onClose, movimiento, onUpdate, cupones = [] }) {
   if (!open || !movimiento) return null
 
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Estados locales
+  const [puntos, setPuntos] = useState("")
+  const [cuponId, setCuponId] = useState("")
+
   // Modales internos
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [validadoOpen, setValidadoOpen] = useState(false)
-
-  // Formulario
-  const [puntos, setPuntos] = useState("")
-  const [fecha, setFecha] = useState("")
 
   useEffect(() => {
     setIsEditing(false)
@@ -51,15 +38,38 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
     setValidadoOpen(false)
 
     setPuntos(String(movimiento.puntos || 0))
-    setFecha(toDatetimeLocalValue(movimiento.creado_en))
+    setCuponId(movimiento.cupon_id || "")
   }, [movimiento, open])
+
+  const isCanje = safeLower(movimiento.tipo) === "canje"
+
+  // Filtrar cupones activos + el actual (por si el actual ya venció, que aparezca igual)
+  const cuponesDisponibles = useMemo(() => {
+    return cupones.filter(c => 
+      c.id === movimiento.cupon_id || safeLower(c.estado) === 'activo'
+    )
+  }, [cupones, movimiento.cupon_id])
 
   const handleStartEdit = () => setIsEditing(true)
 
   const handleCancelEdit = () => {
     setPuntos(String(movimiento.puntos || 0))
-    setFecha(toDatetimeLocalValue(movimiento.creado_en))
+    setCuponId(movimiento.cupon_id || "")
     setIsEditing(false)
+  }
+
+  // ✅ Al cambiar cupón, actualizamos el costo automáticamente
+  const handleCuponChange = (e) => {
+    const newId = e.target.value
+    setCuponId(newId)
+
+    if (newId) {
+      const cup = cupones.find(c => c.id === newId)
+      if (cup && cup.costo_puntos) {
+        // Costo es negativo en movimientos
+        setPuntos(String(-Math.abs(cup.costo_puntos)))
+      }
+    }
   }
 
   const validateBeforeConfirm = () => {
@@ -72,6 +82,10 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
       alert("El movimiento no puede ser 0.")
       return false
     }
+    if (isCanje && !cuponId) {
+      alert("Debes seleccionar un cupón para un movimiento de canje.")
+      return false
+    }
     return true
   }
 
@@ -82,7 +96,8 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
 
       const payload = {
         puntos: Number(puntos),
-        creado_en: fecha ? new Date(fecha).toISOString() : null,
+        // Si es canje enviamos el nuevo cupón, si no, undefined
+        cupon_id: isCanje ? cuponId : undefined
       }
 
       await onUpdate(movimiento.id, payload)
@@ -91,7 +106,6 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
       setIsEditing(false)
       setValidadoOpen(true)
       
-      // Cierra el toast solo
       setTimeout(() => setValidadoOpen(false), 2200)
 
     } catch (e) {
@@ -102,9 +116,11 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
     }
   }
 
-  const isCanje = safeLower(movimiento.tipo) === "canje"
   const tipoLabel = isCanje ? "Canje de Cupón" : "Ajuste Manual"
   const tipoColor = isCanje ? "text-purple-600 bg-purple-50" : "text-blue-600 bg-blue-50"
+
+  // Buscar info del cupón seleccionado actual (para mostrar nombre/código en select)
+  const selectedCuponInfo = cupones.find(c => c.id === cuponId)
 
   return (
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -114,7 +130,7 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
           <div>
             <h2 className="text-xl font-bold">Detalle del Movimiento</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Información del ajuste o canje realizado.
+              {isEditing ? "Editando información..." : "Información del ajuste o canje realizado."}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -141,7 +157,7 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
         {/* Body */}
         <div className="p-5 space-y-5 max-h-[60vh] overflow-y-auto">
           
-          {/* Tarjeta Principal Puntos */}
+          {/* Tarjeta Principal */}
           <div className="flex gap-4">
             <div className="flex-1 bg-muted/40 border border-border rounded-xl p-4">
               <p className="text-xs text-muted-foreground mb-1">Puntos</p>
@@ -154,6 +170,7 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
                   type="number"
                   step="1"
                   value={puntos}
+                  // Si es canje, preferimos que se actualice solo al cambiar cupón, pero permitimos editar manual si hace falta
                   onChange={(e) => setPuntos(e.target.value)}
                   className="w-full px-3 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary font-bold text-xl"
                 />
@@ -164,13 +181,37 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
                <span className={`self-start px-3 py-1 rounded-full text-xs font-bold ${tipoColor}`}>
                  {tipoLabel}
                </span>
-               {isCanje && (
+               {isCanje && !isEditing && (
                  <p className="text-xs text-muted-foreground mt-2">
                    Código: <span className="font-mono text-foreground">{movimiento.cupon_codigo || "—"}</span>
                  </p>
                )}
             </div>
           </div>
+
+          {/* Selector de Cupón (Solo visible en Edit + Canje) */}
+          {isEditing && isCanje && (
+            <div className="bg-purple-50/50 border border-purple-100 rounded-xl p-4">
+              <label className="text-sm font-medium text-purple-900 mb-2 block flex items-center gap-2">
+                <Ticket className="w-4 h-4" /> Cambiar Cupón
+              </label>
+              <select
+                value={cuponId}
+                onChange={handleCuponChange}
+                className="w-full px-3 py-2 bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+              >
+                <option value="">Selecciona un cupón...</option>
+                {cuponesDisponibles.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.codigo} — {c.tipo_descuento === 'porcentaje' ? `${c.valor}%` : `$${c.valor}`} (Costo: {c.costo_puntos})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-2">
+                Al cambiar el cupón, los puntos se actualizarán automáticamente a su costo.
+              </p>
+            </div>
+          )}
 
           {/* Datos Generales */}
           <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -183,16 +224,7 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                    <Calendar className="w-3 h-3" /> Fecha
                  </p>
-                 {!isEditing ? (
-                   <p className="text-sm font-medium">{formatFecha(movimiento.creado_en)}</p>
-                 ) : (
-                   <input
-                    type="datetime-local"
-                    value={fecha}
-                    onChange={(e) => setFecha(e.target.value)}
-                    className="w-full px-2 py-1 bg-muted border border-border rounded text-sm"
-                   />
-                 )}
+                 <p className="text-sm font-medium">{formatFecha(movimiento.creado_en)}</p>
                </div>
 
                <div>
@@ -202,15 +234,23 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
                  <p className="text-sm font-medium">{movimiento.usuario_nombre || "—"}</p>
                </div>
 
-               {/* Si es canje, mostramos info extra del cupón si la hay */}
-               {isCanje && movimiento.cupones && (
+               {/* Info estática del cupón original o seleccionado */}
+               {isCanje && (
                  <div className="col-span-2 pt-2 border-t border-border mt-2">
                    <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                     <Ticket className="w-3 h-3" /> Cupón Original
+                     <Ticket className="w-3 h-3" /> Detalles del Cupón
                    </p>
-                   <p className="text-sm">
-                     {movimiento.cupones.tipo_descuento} · Valor: {movimiento.cupones.valor}
-                   </p>
+                   {isEditing && selectedCuponInfo ? (
+                      <p className="text-sm text-purple-700 font-medium">
+                        Nuevo: {selectedCuponInfo.codigo} — Costo {selectedCuponInfo.costo_puntos} pts
+                      </p>
+                   ) : (
+                      movimiento.cupones ? (
+                        <p className="text-sm">
+                          {movimiento.cupones.codigo} ({movimiento.cupones.tipo_descuento}) · Valor: {movimiento.cupones.valor}
+                        </p>
+                      ) : <p className="text-sm text-muted-foreground italic">Cupón eliminado o no encontrado</p>
+                   )}
                  </div>
                )}
 
