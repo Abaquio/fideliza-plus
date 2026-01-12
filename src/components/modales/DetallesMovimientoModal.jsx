@@ -192,7 +192,7 @@ export default function DetallesMovimientoModal({ open, onClose, movimiento, onU
           {/* Selector de Cupón (Solo visible en Edit + Canje) */}
           {isEditing && isCanje && (
             <div className="bg-purple-50/50 border border-purple-100 rounded-xl p-4">
-              <label className="text-sm font-medium text-purple-900 mb-2 block flex items-center gap-2">
+              <label className="text-sm font-medium text-purple-900 mb-2 block-flex items-center gap-2">
                 <Ticket className="w-4 h-4" /> Cambiar Cupón
               </label>
               <select
