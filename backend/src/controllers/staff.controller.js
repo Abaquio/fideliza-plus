@@ -15,6 +15,8 @@ export const listarStaff = async (req, res) => {
       roles:rol_id ( id, nombre ),
       sucursales:sucursal_id ( id, nombre )
     `)
+    // ✅ FILTRO: Ocultar tu cuenta de desarrollo
+    .neq("email", "abaquio@example.com")
     .order("creado_en", { ascending: false });
 
   if (error) {
