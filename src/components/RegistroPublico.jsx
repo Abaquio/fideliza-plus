@@ -3,8 +3,9 @@
 import { useState } from "react"
 import { CheckCircle, Gift, Loader2, AlertTriangle, AlertCircle } from "lucide-react"
 
+// ✅ Usamos las funciones actualizadas
 import {
-  formatearRutLive,
+  normalizarRut, // Usamos normalizarRut que es la estándar
   validarRut,
   limpiarNombreLive,
   validarEmail,
@@ -35,7 +36,6 @@ export default function RegistroPublico() {
     telefono: "+56"
   })
 
-  // Solo guardamos errores de validación lógica (RUT real, Email real)
   const [errors, setErrors] = useState({
     rut: "",
     email: "",
@@ -47,13 +47,12 @@ export default function RegistroPublico() {
     let finalValue = value
     let errorMsg = ""
 
-    // --- 1. LÓGICA DE TRANSFORMACIÓN (INPUT MASK) ---
+    // --- Lógica de Input Mask ---
     
     if (name === "rut") {
-      // Formatear RUT: 12345678-9 (sin puntos, con guion)
-      finalValue = formatearRutLive(value)
+      // Usamos normalizarRut que ahora es segura
+      finalValue = normalizarRut(value)
       
-      // Validación en tiempo real del DV (si tiene largo suficiente)
       if (finalValue.length > 7) {
         if (!validarRut(finalValue)) {
           errorMsg = "RUT inválido"
@@ -61,18 +60,15 @@ export default function RegistroPublico() {
       }
     } 
     else if (name === "nombres" || name === "apellidos") {
-      // Solo permitir letras y espacios (borra números/signos al instante)
+      // Limpieza segura de caracteres
       finalValue = limpiarNombreLive(value)
-      // Sin error rojo, simplemente no deja escribir basura
     }
     else if (name === "email") {
-      // Validación formato email
       if (value.length > 0 && !validarEmail(value)) {
         errorMsg = "Email inválido"
       }
     }
     else if (name === "telefono") {
-      // Validar largo teléfono
       if (value.length > 4) {
          const check = validarYNormalizarTelefono(value)
          if (!check.valido) errorMsg = "Mínimo 8 dígitos"
@@ -81,7 +77,6 @@ export default function RegistroPublico() {
 
     setForm(prev => ({ ...prev, [name]: finalValue }))
     
-    // Actualizar errores (solo para campos que llevan alerta roja)
     if (["rut", "email", "telefono"].includes(name)) {
       setErrors(prev => ({ ...prev, [name]: errorMsg }))
     }
@@ -89,11 +84,10 @@ export default function RegistroPublico() {
     setGeneralError("")
   }
 
-  // Sanitización final al perder el foco (Blur)
   const handleBlur = (e) => {
     const { name, value } = e.target
     if (name === "nombres" || name === "apellidos") {
-      // Trim de espacios extra al salir del campo
+      // Trim seguro al salir
       setForm(prev => ({ ...prev, [name]: value.trim().replace(/\s+/g, " ") }))
     }
   }
@@ -101,7 +95,6 @@ export default function RegistroPublico() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    // Validación Final Bloqueante
     if (!validarRut(form.rut)) {
       setGeneralError("El RUT ingresado no es válido.")
       return
@@ -201,7 +194,6 @@ export default function RegistroPublico() {
             </div>
           )}
 
-          {/* RUT */}
           <div>
             <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">RUT</label>
             <input
@@ -220,7 +212,6 @@ export default function RegistroPublico() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            {/* Nombres */}
             <div>
               <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre</label>
               <input
@@ -229,10 +220,9 @@ export default function RegistroPublico() {
                 onChange={handleChange}
                 onBlur={handleBlur}
                 placeholder="Juan"
-                className={getInputClass(false)} // Sin rojo, solo previene input
+                className={getInputClass(false)}
               />
             </div>
-            {/* Apellidos */}
             <div>
               <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Apellidos</label>
               <input
@@ -246,7 +236,6 @@ export default function RegistroPublico() {
             </div>
           </div>
 
-          {/* Email */}
           <div>
             <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Correo Electrónico</label>
             <input
@@ -264,7 +253,6 @@ export default function RegistroPublico() {
             )}
           </div>
 
-          {/* Teléfono */}
           <div>
             <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Teléfono (Opcional)</label>
             <input

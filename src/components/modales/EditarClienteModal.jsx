@@ -11,6 +11,7 @@ import {
   validarRut,
   validarYNormalizarRut,
   validarYNormalizarNombre,
+  limpiarNombreLive, // ✅ Importamos la función segura
   validarEmail,
   validarYNormalizarTelefono,
 } from "../../utils/validaciones"
@@ -56,6 +57,7 @@ export default function EditarClienteModal({
     setConfirmOpen(false)
     setPendingAction(null)
 
+    // ✅ BLINDAJE: Usamos (x || "") para evitar nulls en los inputs
     setForm({
       rut: cliente?.rut || "",
       nombres: cliente?.nombres || "",
@@ -90,14 +92,16 @@ export default function EditarClienteModal({
       }
 
       if (key === "nombres") {
-        const cleaned = validarYNormalizarNombre(value || "")
-        if (!cleaned) return "Nombre es obligatorio"
+        // ✅ CORRECCIÓN: validarYNormalizarNombre devuelve objeto
+        const { valido } = validarYNormalizarNombre(value || "")
+        if (!valido) return "Nombre es obligatorio"
         return null
       }
 
       if (key === "apellidos") {
         if (!value) return null
-        validarYNormalizarNombre(value)
+        const { valido } = validarYNormalizarNombre(value || "")
+        if (!valido && value.length > 0) return "Apellido inválido"
         return null
       }
 
@@ -121,12 +125,11 @@ export default function EditarClienteModal({
 
       if (key === "puntos_ajuste_op") {
         if (!["sumar", "descontar"].includes(value)) return "Opción inválida"
-        // si cambia a descontar, validamos también el valor
         const v = String(fullForm.puntos_ajuste_valor ?? "").trim()
         if (value === "descontar" && v) {
           const n = parseInt(v, 10)
           if (Number.isFinite(n) && n > puntosActuales) {
-            return null // el error se asigna al valor, no al select
+            return null 
           }
         }
         return null
@@ -140,7 +143,6 @@ export default function EditarClienteModal({
         if (!Number.isFinite(n)) return "Ajuste inválido"
         if (n <= 0) return "Debe ser mayor a 0"
 
-        // ✅ regla: no permitir negativo al descontar
         if (fullForm.puntos_ajuste_op === "descontar" && n > puntosActuales) {
           return `No puedes descontar más de ${puntosActuales} puntos`
         }
@@ -172,16 +174,15 @@ export default function EditarClienteModal({
     return nextErrors
   }
 
+  // Comprobar validez general
   const isValid = useMemo(() => Object.keys(validateAll(form)).length === 0, [form])
 
   const touchAndValidate = (key, value) => {
     const nextForm = { ...form, [key]: value }
     setTouched((t) => ({ ...t, [key]: true }))
 
-    // validamos campo actual
     const msg = validateField(key, value, nextForm)
 
-    // si cambié op, también recalculo el error del valor (por la regla de no-negativo)
     let extra = {}
     if (key === "puntos_ajuste_op") {
       const msgValor = validateField("puntos_ajuste_valor", nextForm.puntos_ajuste_valor, nextForm)
@@ -207,7 +208,9 @@ export default function EditarClienteModal({
     }
 
     if (key === "nombres" || key === "apellidos") {
-      const cleaned = raw.replace(/\s+/g, " ")
+      // ✅ CORRECCIÓN: Usamos limpiarNombreLive (devuelve STRING)
+      // Evita el [object Object] al escribir
+      const cleaned = limpiarNombreLive(raw)
       setField(key, cleaned)
       touchAndValidate(key, cleaned)
       return
@@ -252,9 +255,10 @@ export default function EditarClienteModal({
 
   const handleBlur = (key) => () => {
     if (key === "nombres" || key === "apellidos") {
-      const cleaned = validarYNormalizarNombre(form[key] || "")
-      setField(key, cleaned)
-      touchAndValidate(key, cleaned)
+      // ✅ CORRECCIÓN: Extraemos .valor del objeto que retorna validarYNormalizarNombre
+      const { valor } = validarYNormalizarNombre(form[key] || "")
+      setField(key, valor)
+      touchAndValidate(key, valor)
       return
     }
 
@@ -282,15 +286,16 @@ export default function EditarClienteModal({
   function normalizeBeforeSubmit(raw) {
     const payload = { ...raw }
 
-    payload.rut = validarYNormalizarRut(payload.rut)
-    payload.nombres = validarYNormalizarNombre(payload.nombres || "")
-    payload.apellidos = payload.apellidos ? validarYNormalizarNombre(payload.apellidos) : null
+    // Aquí usamos .valor porque validarYNormalizar... devuelven objeto
+    payload.rut = validarYNormalizarRut(payload.rut).valor
+    payload.nombres = validarYNormalizarNombre(payload.nombres || "").valor
+    payload.apellidos = payload.apellidos ? validarYNormalizarNombre(payload.apellidos).valor : null
 
     payload.email = payload.email?.trim() ? payload.email.trim() : null
     if (payload.email && !validarEmail(payload.email)) throw new Error("Email inválido")
 
     payload.telefono = payload.telefono?.trim()
-      ? validarYNormalizarTelefono(payload.telefono)
+      ? validarYNormalizarTelefono(payload.telefono).valor
       : null
 
     payload.estado = payload.estado || "activo"
@@ -302,7 +307,6 @@ export default function EditarClienteModal({
       const n = parseInt(v, 10)
       if (!Number.isFinite(n) || n <= 0) throw new Error("El ajuste de puntos debe ser mayor a 0")
 
-      // ✅ regla dura aquí también
       if (payload.puntos_ajuste_op === "descontar" && n > puntosActuales) {
         throw new Error(`No puedes descontar más de ${puntosActuales} puntos`)
       }
@@ -353,7 +357,6 @@ export default function EditarClienteModal({
     ajusteValor > 0 ? (form.puntos_ajuste_op === "descontar" ? -ajusteValor : ajusteValor) : 0
   const puntosPreview = puntosActuales + (Number.isFinite(ajusteSigned) ? ajusteSigned : 0)
 
-  // ✅ para ayudar al input (no es seguridad, la validación lo es)
   const inputMax = form.puntos_ajuste_op === "descontar" ? Math.max(0, puntosActuales) : undefined
 
   return (
@@ -361,7 +364,6 @@ export default function EditarClienteModal({
       className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
       onMouseDown={handleBackdropClick}
     >
-      {/* ✅ modal siempre visible: alto máximo + scroll interno */}
       <div className="bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in max-h-[90vh] overflow-y-auto overscroll-contain">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
@@ -510,7 +512,7 @@ export default function EditarClienteModal({
             </p>
           </div>
 
-          {/* ✅ BLOQUE PUNTOS: responsive + sin negativos */}
+          {/* Bloque Puntos */}
           <div className="space-y-3 md:col-span-2">
             <div className="bg-muted/40 border border-border rounded-lg p-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -537,7 +539,6 @@ export default function EditarClienteModal({
                     </p>
                   )}
 
-                  {/* ✅ aviso extra cuando es descuento y se pasa */}
                   {errors.puntos_ajuste_valor ? (
                     <p className="text-xs text-destructive mt-1">{errors.puntos_ajuste_valor}</p>
                   ) : null}

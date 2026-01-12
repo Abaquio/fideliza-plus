@@ -65,6 +65,7 @@ export default function NuevoClienteModal({
     return (
       form.rut.trim() &&
       form.nombres.trim() &&
+      form.telefono.trim() && // ✅ OBLIGATORIO
       !fieldErrors.rut &&
       !fieldErrors.nombres &&
       !fieldErrors.email &&
@@ -72,15 +73,14 @@ export default function NuevoClienteModal({
     )
   }, [form, fieldErrors])
 
-  // 🔥 ERROR ESTABA AQUÍ: Este hook estaba DESPUÉS del return null. Lo moví arriba.
   const canReactivar = useMemo(() => {
     return String(existingCliente?.estado || "").toLowerCase() === "eliminado"
   }, [existingCliente])
 
-  // ✅ AHORA SÍ: El return va DESPUÉS de todos los hooks
+  // El return va DESPUÉS de todos los hooks
   if (!open) return null
 
-  // --- LÓGICA Y HANDLERS (No cambia nada hacia abajo) ---
+  // --- LÓGICA Y HANDLERS ---
 
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) onClose?.()
@@ -118,20 +118,28 @@ export default function NuevoClienteModal({
   }
 
   const validateTelefonoLive = (value) => {
-    if (!value?.trim()) return ""
+    if (!value?.trim()) return "El teléfono es obligatorio" // ✅ OBLIGATORIO
     try {
       if (typeof validarYNormalizarTelefono === "function") {
-        validarYNormalizarTelefono(value)
+        const { valido } = validarYNormalizarTelefono(value)
+        if (!valido) return "Teléfono inválido (mín 8 dígitos)"
         return ""
       }
-      return "" // Si no existe la función, asumimos válido para no bloquear
+      return "" 
     } catch {
       return "Teléfono inválido (ej: +56912345678)"
     }
   }
 
   const handleChange = (key) => (e) => {
-    const next = e.target.value
+    let next = e.target.value
+
+    // ✅ FIX: ESTO IMPIDE ESCRIBIR LETRAS
+    // Solo permite números, el signo + y espacios
+    if (key === "telefono") {
+      next = next.replace(/[^0-9+\s]/g, "")
+    }
+
     setForm((prev) => ({ ...prev, [key]: next }))
 
     if (!touched[key]) return
@@ -146,9 +154,8 @@ export default function NuevoClienteModal({
     if (!onCheckRut) return
     setCheckingRut(true)
     try {
-      // Usamos el validador si existe, sino pasamos directo
       const rutNorm = typeof validarYNormalizarRut === "function" 
-        ? validarYNormalizarRut(rutFormatted).valor // asumiendo que retorna obj
+        ? validarYNormalizarRut(rutFormatted).valor 
         : rutFormatted
 
       const found = await onCheckRut(rutNorm)
@@ -193,7 +200,7 @@ export default function NuevoClienteModal({
   const handleApellidosBlur = () => {
     markTouched("apellidos")
     if (!form.apellidos) {
-      setError("apellidos", "")
+      setError("apellidos", "") 
       return
     }
     const norm = typeof validarYNormalizarNombre === "function"
@@ -204,6 +211,7 @@ export default function NuevoClienteModal({
     setError("apellidos", "")
   }
 
+  // ✅ Restaurada: handleEmailBlur
   const handleEmailBlur = () => {
     markTouched("email")
     setError("email", validateEmailLive(form.email))
@@ -217,20 +225,27 @@ export default function NuevoClienteModal({
 
   const handleTelefonoBlur = () => {
     markTouched("telefono")
-    if (!form.telefono?.trim()) {
-      setError("telefono", "")
+    const val = form.telefono?.trim()
+
+    // ✅ Validación estricta en blur
+    if (!val) {
+      setError("telefono", "El teléfono es obligatorio")
       return
     }
 
     try {
-      const tel = typeof validarYNormalizarTelefono === "function"
-        ? validarYNormalizarTelefono(form.telefono).valor
-        : form.telefono.trim()
+      const { valor, valido } = typeof validarYNormalizarTelefono === "function"
+        ? validarYNormalizarTelefono(val)
+        : { valor: val, valido: true }
 
-      setForm((p) => ({ ...p, telefono: tel }))
-      setError("telefono", "")
+      if (!valido) {
+        setError("telefono", "Teléfono inválido (ej: +56912345678)")
+      } else {
+        setForm((p) => ({ ...p, telefono: valor }))
+        setError("telefono", "")
+      }
     } catch {
-      setError("telefono", "Teléfono inválido (ej: +56912345678)")
+      setError("telefono", "Teléfono inválido")
     }
   }
 
@@ -255,7 +270,7 @@ export default function NuevoClienteModal({
     const rutErr = validateRutLive(form.rut)
     const nomErr = validateNombre(form.nombres)
     const emailErr = validateEmailLive(form.email)
-    const telErr = validateTelefonoLive(form.telefono)
+    const telErr = validateTelefonoLive(form.telefono) // ✅ Valida obligatorio
 
     setFieldErrors({
       rut: rutErr,
@@ -270,7 +285,7 @@ export default function NuevoClienteModal({
     try {
       setSubmitError("")
 
-      // Preparamos payload seguro, usando validadores si existen
+      // Preparamos payload seguro
       const payload = {
         rut: typeof validarYNormalizarRut === "function" ? validarYNormalizarRut(form.rut).valor : form.rut,
         nombres: typeof validarYNormalizarNombre === "function" ? validarYNormalizarNombre(form.nombres).valor : form.nombres,
@@ -278,9 +293,9 @@ export default function NuevoClienteModal({
           ? (typeof validarYNormalizarNombre === "function" ? validarYNormalizarNombre(form.apellidos).valor : form.apellidos)
           : null,
         email: form.email ? form.email.trim() : null,
-        telefono: form.telefono 
-          ? (typeof validarYNormalizarTelefono === "function" ? validarYNormalizarTelefono(form.telefono).valor : form.telefono)
-          : null,
+        telefono: typeof validarYNormalizarTelefono === "function" 
+          ? validarYNormalizarTelefono(form.telefono).valor 
+          : form.telefono,
       }
 
       await onSubmit?.(payload)
@@ -296,7 +311,7 @@ export default function NuevoClienteModal({
     if (!canReactivar || isSaving) return
     try {
       setSubmitError("")
-      await onReactivar?.(existingCliente?.id) // Pasamos ID simple
+      await onReactivar?.(existingCliente?.id) 
       onClose?.()
     } catch (e) {
       setSubmitError(e?.message || "No se pudo reactivar el cliente")
@@ -360,7 +375,7 @@ export default function NuevoClienteModal({
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">RUT</label>
+            <label className="block text-sm font-medium mb-2">RUT *</label>
             <input
               type="text"
               value={form.rut}
@@ -368,7 +383,7 @@ export default function NuevoClienteModal({
               onBlur={handleRutBlur}
               onFocus={() => markTouched("rut")}
               className={inputClass("rut")}
-              placeholder="Ej: 11222333-4"
+              placeholder="11222333-4"
             />
             <p className="mt-1 text-xs text-muted-foreground">Sin puntos. Con guión y dígito verificador.</p>
             {helper("rut")}
@@ -399,6 +414,7 @@ export default function NuevoClienteModal({
               className={inputClass("apellidos")}
               placeholder="Ej: González"
             />
+            {helper("apellidos")}
           </div>
 
           <div>
@@ -416,7 +432,7 @@ export default function NuevoClienteModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Teléfono</label>
+            <label className="block text-sm font-medium mb-2">Teléfono *</label>
             <input
               type="tel"
               value={form.telefono}
