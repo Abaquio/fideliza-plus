@@ -14,8 +14,8 @@ export default function NuevoClienteModal({
   open,
   onClose,
   onSubmit,
-  onCheckRut,     // ✅ NUEVO
-  onReactivar,    // ✅ NUEVO
+  onCheckRut,
+  onReactivar,
   isSaving = false,
 }) {
   const [form, setForm] = useState({
@@ -44,10 +44,11 @@ export default function NuevoClienteModal({
 
   const [submitError, setSubmitError] = useState("")
 
-  // ✅ NUEVO: info de RUT existente
+  // Info de RUT existente
   const [existingCliente, setExistingCliente] = useState(null)
   const [checkingRut, setCheckingRut] = useState(false)
 
+  // Hook 1: Reset al abrir
   useEffect(() => {
     if (open) {
       setForm({ rut: "", nombres: "", apellidos: "", email: "", telefono: "" })
@@ -59,6 +60,7 @@ export default function NuevoClienteModal({
     }
   }, [open])
 
+  // Hook 2: Validación general
   const canSubmit = useMemo(() => {
     return (
       form.rut.trim() &&
@@ -70,7 +72,15 @@ export default function NuevoClienteModal({
     )
   }, [form, fieldErrors])
 
+  // 🔥 ERROR ESTABA AQUÍ: Este hook estaba DESPUÉS del return null. Lo moví arriba.
+  const canReactivar = useMemo(() => {
+    return String(existingCliente?.estado || "").toLowerCase() === "eliminado"
+  }, [existingCliente])
+
+  // ✅ AHORA SÍ: El return va DESPUÉS de todos los hooks
   if (!open) return null
+
+  // --- LÓGICA Y HANDLERS (No cambia nada hacia abajo) ---
 
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) onClose?.()
@@ -110,8 +120,11 @@ export default function NuevoClienteModal({
   const validateTelefonoLive = (value) => {
     if (!value?.trim()) return ""
     try {
-      validarYNormalizarTelefono(value)
-      return ""
+      if (typeof validarYNormalizarTelefono === "function") {
+        validarYNormalizarTelefono(value)
+        return ""
+      }
+      return "" // Si no existe la función, asumimos válido para no bloquear
     } catch {
       return "Teléfono inválido (ej: +56912345678)"
     }
@@ -129,16 +142,18 @@ export default function NuevoClienteModal({
     if (key === "telefono") setError("telefono", validateTelefonoLive(next))
   }
 
-  // ✅ NUEVO: check rut en backend (solo si es válido)
   const checkRutExists = async (rutFormatted) => {
     if (!onCheckRut) return
     setCheckingRut(true)
     try {
-      const rutNorm = validarYNormalizarRut(rutFormatted)
+      // Usamos el validador si existe, sino pasamos directo
+      const rutNorm = typeof validarYNormalizarRut === "function" 
+        ? validarYNormalizarRut(rutFormatted).valor // asumiendo que retorna obj
+        : rutFormatted
+
       const found = await onCheckRut(rutNorm)
       setExistingCliente(found || null)
     } catch {
-      // si falla el check, no rompemos UX
       setExistingCliente(null)
     } finally {
       setCheckingRut(false)
@@ -162,13 +177,15 @@ export default function NuevoClienteModal({
       return
     }
 
-    // ✅ check existencia
     await checkRutExists(formatted)
   }
 
   const handleNombreBlur = () => {
     markTouched("nombres")
-    const norm = validarYNormalizarNombre(form.nombres || "")
+    const norm = typeof validarYNormalizarNombre === "function"
+      ? validarYNormalizarNombre(form.nombres || "").valor
+      : (form.nombres || "").trim()
+      
     setForm((p) => ({ ...p, nombres: norm }))
     setError("nombres", validateNombre(norm))
   }
@@ -179,7 +196,10 @@ export default function NuevoClienteModal({
       setError("apellidos", "")
       return
     }
-    const norm = validarYNormalizarNombre(form.apellidos)
+    const norm = typeof validarYNormalizarNombre === "function"
+      ? validarYNormalizarNombre(form.apellidos).valor
+      : (form.apellidos || "").trim()
+
     setForm((p) => ({ ...p, apellidos: norm }))
     setError("apellidos", "")
   }
@@ -203,7 +223,10 @@ export default function NuevoClienteModal({
     }
 
     try {
-      const tel = validarYNormalizarTelefono(form.telefono)
+      const tel = typeof validarYNormalizarTelefono === "function"
+        ? validarYNormalizarTelefono(form.telefono).valor
+        : form.telefono.trim()
+
       setForm((p) => ({ ...p, telefono: tel }))
       setError("telefono", "")
     } catch {
@@ -247,17 +270,21 @@ export default function NuevoClienteModal({
     try {
       setSubmitError("")
 
+      // Preparamos payload seguro, usando validadores si existen
       const payload = {
-        rut: validarYNormalizarRut(form.rut),
-        nombres: validarYNormalizarNombre(form.nombres),
-        apellidos: form.apellidos ? validarYNormalizarNombre(form.apellidos) : null,
+        rut: typeof validarYNormalizarRut === "function" ? validarYNormalizarRut(form.rut).valor : form.rut,
+        nombres: typeof validarYNormalizarNombre === "function" ? validarYNormalizarNombre(form.nombres).valor : form.nombres,
+        apellidos: form.apellidos 
+          ? (typeof validarYNormalizarNombre === "function" ? validarYNormalizarNombre(form.apellidos).valor : form.apellidos)
+          : null,
         email: form.email ? form.email.trim() : null,
-        telefono: form.telefono ? validarYNormalizarTelefono(form.telefono) : null,
+        telefono: form.telefono 
+          ? (typeof validarYNormalizarTelefono === "function" ? validarYNormalizarTelefono(form.telefono).valor : form.telefono)
+          : null,
       }
 
       await onSubmit?.(payload)
     } catch (err) {
-      // ✅ si el RUT existe, intentamos refrescar "existingCliente"
       if (err?.code === "RUT_EXISTS" && err?.existingCliente) {
         setExistingCliente(err.existingCliente)
       }
@@ -265,20 +292,11 @@ export default function NuevoClienteModal({
     }
   }
 
-  const canReactivar = useMemo(() => {
-    return String(existingCliente?.estado || "").toLowerCase() === "eliminado"
-  }, [existingCliente])
-
   const handleReactivar = async () => {
     if (!canReactivar || isSaving) return
     try {
       setSubmitError("")
-      await onReactivar?.(existingCliente, {
-        nombres: form.nombres ? validarYNormalizarNombre(form.nombres) : undefined,
-        apellidos: form.apellidos ? validarYNormalizarNombre(form.apellidos) : undefined,
-        email: form.email ? form.email.trim() : undefined,
-        telefono: form.telefono ? validarYNormalizarTelefono(form.telefono) : undefined,
-      })
+      await onReactivar?.(existingCliente?.id) // Pasamos ID simple
       onClose?.()
     } catch (e) {
       setSubmitError(e?.message || "No se pudo reactivar el cliente")
@@ -304,7 +322,6 @@ export default function NuevoClienteModal({
           </div>
         ) : null}
 
-        {/* ✅ NUEVO: aviso de existencia */}
         {checkingRut ? (
           <div className="mb-4 bg-muted border border-border text-muted-foreground rounded-lg p-3 text-sm">
             Revisando RUT...

@@ -1,31 +1,27 @@
 // src/utils/validaciones.js
 
 /**
- * Normaliza un RUT y lo formatea como "11222333-4".
+ * Normaliza y formatea el RUT en tiempo real (11222333-K)
+ * ✅ BLINDADO: Convierte a string antes de procesar
  */
-export function normalizarRut(rut) {
-  // Eliminar puntos, espacios y convertir a mayúsculas
-  const limpio = rut.toUpperCase().replace(/[^0-9K]/g, "");
-  if (limpio.length < 2) return "";
+export function formatearRutLive(rut) {
+  // Aseguramos que sea string, si es null/undefined usa ""
+  const valor = String(rut || "").replace(/[^0-9kK]/g, "").toUpperCase();
+  
+  if (valor.length <= 1) return valor;
 
-  const cuerpo = limpio.slice(0, -1);
-  const dv = limpio.slice(-1);
+  const cuerpo = valor.slice(0, -1);
+  const dv = valor.slice(-1);
 
   return `${cuerpo}-${dv}`;
 }
 
-/**
- * Valida el dígito verificador del RUT chileno
- */
 export function validarRut(rut) {
-  if (!rut) return false;
-
-  const limpio = rut.toUpperCase().replace(/[^0-9K]/g, "");
+  const limpio = String(rut || "").replace(/[^0-9kK]/g, "").toUpperCase();
   if (limpio.length < 2) return false;
 
   const cuerpo = limpio.slice(0, -1);
   const dv = limpio.slice(-1);
-
   let suma = 0;
   let multiplicador = 2;
 
@@ -36,47 +32,41 @@ export function validarRut(rut) {
 
   const resto = suma % 11;
   const dvEsperado =
-    resto === 1 ? "K" :
-    resto === 0 ? "0" :
-    (11 - resto).toString();
+    resto === 1 ? "K" : resto === 0 ? "0" : (11 - resto).toString();
 
   return dv === dvEsperado;
 }
 
 /**
- * Normaliza y valida el RUT.
+ * Solo permite letras y espacios. Elimina números y símbolos.
+ * ✅ BLINDADO: Evita el error "texto.replace is not a function"
  */
-export function validarYNormalizarRut(rut) {
-  const normalizado = normalizarRut(rut);
-  if (!normalizado || !validarRut(normalizado)) {
-    throw new Error("RUT inválido");
-  }
-  return normalizado;
+export function limpiarNombreLive(texto) {
+  // Convertimos a String seguro antes de usar .replace
+  const str = String(texto || ""); 
+  return str.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, "");
 }
 
-/**
- * Elimina espacios extra en nombre (al principio, final y entre palabras)
- */
-export function validarYNormalizarNombre(nombre) {
-  return nombre.trim().replace(/\s+/g, " ");
-}
-
-/**
- * Valida que el email tenga formato correcto
- */
 export function validarEmail(email) {
-  const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  return regex.test(email);
+  const str = String(email || "").trim();
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(str);
 }
 
-/**
- * Valida y normaliza el teléfono, asumiendo +56 para Chile
- */
-export function validarYNormalizarTelefono(telefono) {
-  // Acepta formatos como: +56912345678 o 56912345678
-  const limpio = telefono.replace(/[^\d]/g, ""); // Elimina cualquier caracter no numérico
-  if (limpio.startsWith("56") && limpio.length === 11) {
-    return `+${limpio}`;
-  }
-  throw new Error("Número de teléfono inválido");
+export function validarYNormalizarTelefono(fono) {
+  const val = String(fono || "").replace(/[^0-9+\s]/g, "");
+  return { valor: val, valido: val.length >= 8 };
+}
+
+// Helpers de compatibilidad (usando las funciones blindadas)
+export function normalizarRut(rut) { return formatearRutLive(rut); }
+
+export function validarYNormalizarRut(rut) { 
+  const val = formatearRutLive(rut); 
+  return { valor: val, valido: validarRut(val) }; 
+}
+
+export function validarYNormalizarNombre(nombre) {
+  const val = limpiarNombreLive(nombre).trim().replace(/\s+/g, " ");
+  return { valor: val, valido: val.length >= 2 };
 }

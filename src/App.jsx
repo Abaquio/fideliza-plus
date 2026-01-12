@@ -15,6 +15,9 @@ import PerfilFull from "./components/PerfilFull"
 import Configuracion from "./components/Configuracion"
 import Login from "./components/Login"
 
+// ✅ NUEVO: Importamos el componente de registro público
+import RegistroPublico from "./components/RegistroPublico"
+
 const PATH_TO_VIEW = {
   "/dashboard": "dashboard",
   "/clientes": "clientes",
@@ -34,7 +37,7 @@ function safeParse(raw) {
 }
 
 function readSession() {
-  // ✅ token: primero sessionStorage, luego localStorage (compatibilidad)
+  // token
   const token =
     sessionStorage.getItem("token") ||
     sessionStorage.getItem("authToken") ||
@@ -44,22 +47,18 @@ function readSession() {
     sessionStorage.getItem("access_token") ||
     ""
 
-  // ✅ user: primero sessionStorage, luego localStorage (compatibilidad)
+  // user
   const user =
     safeParse(sessionStorage.getItem("user")) ||
-    safeParse(sessionStorage.getItem("usuario")) ||
-    safeParse(sessionStorage.getItem("authUser")) ||
     safeParse(localStorage.getItem("user")) ||
-    safeParse(localStorage.getItem("usuario")) ||
-    safeParse(localStorage.getItem("authUser")) ||
     null
 
   return { token, user }
 }
 
-function AppLayout({ currentView, setCurrentView, sidebarOpen, setSidebarOpen, user, children }) {
+function AppLayout({ children, currentView, setCurrentView, sidebarOpen, setSidebarOpen, user }) {
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-background text-foreground overflow-hidden">
       <Sidebar
         currentView={currentView}
         setCurrentView={setCurrentView}
@@ -67,11 +66,10 @@ function AppLayout({ currentView, setCurrentView, sidebarOpen, setSidebarOpen, u
         setIsOpen={setSidebarOpen}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar user={user} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-7xl mx-auto">{children}</div>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        <Topbar onMenuClick={() => setSidebarOpen(true)} user={user} />
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 scroll-smooth relative z-0">
+          {children}
         </main>
       </div>
     </div>
@@ -80,48 +78,69 @@ function AppLayout({ currentView, setCurrentView, sidebarOpen, setSidebarOpen, u
 
 export default function App() {
   const location = useLocation()
-
   const [currentView, setCurrentView] = useState("dashboard")
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const [{ token, user }, setSession] = useState(() => readSession())
+  const { token: initialToken, user: initialUser } = readSession()
+  const [token, setToken] = useState(initialToken)
+  const [user, setUser] = useState(initialUser)
+
   const isAuthed = !!token
 
+  // Sincronizar vista con URL
   useEffect(() => {
-    const viewFromPath = PATH_TO_VIEW[location.pathname]
-    if (viewFromPath && viewFromPath !== currentView) setCurrentView(viewFromPath)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname])
-
-  // ✅ cambios entre pestañas (solo para localStorage)
-  useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key === "token" || e.key === "authToken" || e.key === "access_token" || e.key === "user") {
-        setSession(readSession())
-      }
+    const path = location.pathname
+    if (PATH_TO_VIEW[path]) {
+      setCurrentView(PATH_TO_VIEW[path])
     }
-    window.addEventListener("storage", onStorage)
-    return () => window.removeEventListener("storage", onStorage)
-  }, [])
+  }, [location])
 
-  // ✅ cambios en la misma pestaña (login/logout + perfil actualizado)
+  // Escuchar eventos de logout o storage
   useEffect(() => {
-    const sync = () => setSession(readSession())
-    window.addEventListener("auth-changed", sync)
-    window.addEventListener("profile-updated", sync) // 🔥 ESTE era el que faltaba
+    const handleStorage = () => {
+      const { token: t, user: u } = readSession()
+      setToken(t)
+      setUser(u)
+    }
+
+    window.addEventListener("storage", handleStorage)
+    window.addEventListener("auth:logout", handleLogout)
+    window.addEventListener("auth-changed", handleStorage)
+
     return () => {
-      window.removeEventListener("auth-changed", sync)
-      window.removeEventListener("profile-updated", sync)
+      window.removeEventListener("storage", handleStorage)
+      window.removeEventListener("auth:logout", handleLogout)
+      window.removeEventListener("auth-changed", handleStorage)
     }
   }, [])
+
+  const handleLogin = (data) => {
+    if (data?.token) {
+      sessionStorage.setItem("token", data.token)
+      localStorage.setItem("token", data.token)
+      setToken(data.token)
+    }
+    if (data?.user) {
+      const s = JSON.stringify(data.user)
+      sessionStorage.setItem("user", s)
+      localStorage.setItem("user", s)
+      setUser(data.user)
+    }
+    window.dispatchEvent(new Event("auth-changed"))
+  }
+
+  const handleLogout = () => {
+    sessionStorage.clear()
+    localStorage.clear()
+    setToken("")
+    setUser(null)
+    window.dispatchEvent(new Event("auth-changed"))
+  }
 
   const topbarUser = useMemo(() => {
-    if (!user) return { name: "Usuario", email: "", avatar: "👤" }
+    if (!user) return { nombre: "Usuario" }
     return {
-      name: user?.nombre || user?.name || "Usuario",
-      email: user?.email || "",
-      avatar: user?.avatar || "👤",
-      // (opcional) si en Topbar usas nombre directo, lo dejamos igual
+      ...user,
       nombre: user?.nombre || user?.name || "Usuario",
     }
   }, [user])
@@ -143,9 +162,13 @@ export default function App() {
   const routes = useMemo(
     () => (
       <Routes>
-        <Route path="/login" element={isAuthed ? <Navigate to="/dashboard" replace /> : <Login />} />
+        {/* ✅ Ruta Pública: Registro QR (Sin protección ni layout) */}
+        <Route path="/unete" element={<RegistroPublico />} />
+
+        <Route path="/login" element={isAuthed ? <Navigate to="/dashboard" replace /> : <Login onLogin={handleLogin} />} />
         <Route path="/" element={<Navigate to={isAuthed ? "/dashboard" : "/login"} replace />} />
 
+        {/* Rutas Protegidas */}
         <Route path="/dashboard" element={requireAuth(wrapLayout(<Dashboard />))} />
         <Route path="/clientes" element={requireAuth(wrapLayout(<Clientes />))} />
         <Route path="/compras" element={requireAuth(wrapLayout(<Compras />))} />
@@ -157,7 +180,7 @@ export default function App() {
         <Route path="*" element={<Navigate to={isAuthed ? "/dashboard" : "/login"} replace />} />
       </Routes>
     ),
-    [currentView, sidebarOpen, topbarUser, isAuthed]
+    [isAuthed, currentView, sidebarOpen, topbarUser]
   )
 
   return routes

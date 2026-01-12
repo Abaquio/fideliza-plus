@@ -116,12 +116,19 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen
           })}
         </nav>
 
-        {/* Footer del Sidebar */}
+        {/* Footer del Sidebar - ✅ NUEVO: Enlace de Ayuda */}
         <div className="p-4 border-t border-border">
-          <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-4 rounded-lg border border-primary/20">
-            <p className="text-sm font-medium mb-1">💎 Plan Premium</p>
-            <p className="text-xs text-muted-foreground">Gestiona clientes ilimitados</p>
-          </div>
+          <a
+            href="https://horn-louse-710.notion.site/Fideliza-Medical-Season-298a4bec326280d7994eeb827a411fdd"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block bg-gradient-to-br from-primary/10 to-accent/10 p-4 rounded-lg border border-primary/20 hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            <p className="text-sm font-medium mb-1 flex items-center gap-2">
+              💡 ¿Necesitas Ayuda?
+            </p>
+            <p className="text-xs text-muted-foreground">Ver documentación y manual</p>
+          </a>
         </div>
       </aside>
     </>

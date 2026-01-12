@@ -5,7 +5,6 @@ import { Plus, Search, Filter, Eye, Calendar, Trash2 } from "lucide-react"
 import RegistrarCompraModal from "./modales/RegistrarCompraModal"
 import DetallesCompraModal from "./modales/DetallesCompraModal"
 import NuevoMovimientoModal from "./modales/NuevoMovimientoModal"
-// ✅ NUEVO MODAL
 import DetallesMovimientoModal from "./modales/DetallesMovimientoModal"
 
 import ConfirmDialog from "../ui/confirm"
@@ -72,7 +71,6 @@ export default function Compras() {
 
   // Modales Movimientos
   const [showNuevoMovimiento, setShowNuevoMovimiento] = useState(false)
-  // ✅ Nuevo estado para ver/editar movimiento
   const [showDetalleMovimiento, setShowDetalleMovimiento] = useState(false)
   const [movimientoSeleccionado, setMovimientoSeleccionado] = useState(null)
 
@@ -94,9 +92,9 @@ export default function Compras() {
   const [desde, setDesde] = useState("") 
   const [hasta, setHasta] = useState("")
 
-  // ✅ Confirm + Validado
+  // Confirm + Validado
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [confirmPayload, setConfirmPayload] = useState({ id: null, type: "", title: "", message: "" }) // type: 'compra' | 'movimiento'
+  const [confirmPayload, setConfirmPayload] = useState({ id: null, type: "", title: "", message: "" }) 
 
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoData, setValidadoData] = useState({ title: "Acción realizada", message: "OK" })
@@ -315,7 +313,7 @@ export default function Compras() {
     setConfirmOpen(true)
   }
 
-  // --- ACTIONS MOVIMIENTO (NUEVO) ---
+  // --- ACTIONS MOVIMIENTO ---
   const handleCrearMovimiento = async (payload) => {
     try {
       setLoading(true)
@@ -572,7 +570,6 @@ export default function Compras() {
                   <th className="px-4 py-3 font-medium">Puntos</th>
                   <th className="px-4 py-3 font-medium">Usuario</th>
                   <th className="px-4 py-3 font-medium">Fecha</th>
-                  {/* ✅ Nueva Columna Acciones */}
                   <th className="px-4 py-3 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
@@ -591,7 +588,6 @@ export default function Compras() {
                       <td className="px-4 py-3"><span className="inline-flex items-center px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">{Number(m.puntos || 0)} pts</span></td>
                       <td className="px-4 py-3">{m.usuario_nombre || "—"}</td>
                       <td className="px-4 py-3 text-muted-foreground">{formatFecha(m.creado_en)}</td>
-                      {/* ✅ Acciones para Movimientos */}
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => handleVerDetalleMovimiento(m)} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors" title="Ver detalles"><Eye className="w-4 h-4" /><span className="hidden sm:inline">Ver</span></button>
@@ -609,11 +605,17 @@ export default function Compras() {
 
       {/* Modales */}
       <RegistrarCompraModal open={showRegistrar} onClose={() => setShowRegistrar(false)} onSubmit={handleRegistrarCompra} clientes={clientes} sucursales={sucursales} config={config} />
-      <DetallesCompraModal open={showDetalles} onClose={() => setShowDetalles(false)} compra={compraSeleccionada} sucursales={sucursales} onUpdate={handleUpdateCompra} cupones={cupones} />
+      <DetallesCompraModal open={showDetalles} onClose={() => setShowDetalles(false)} compra={compraSeleccionada} sucursales={sucursales} onUpdate={handleUpdateCompra} />
       <NuevoMovimientoModal open={showNuevoMovimiento} onClose={() => setShowNuevoMovimiento(false)} clientes={clientesConPuntos.length ? clientesConPuntos : clientes} cupones={cupones} puntosActuales={0} onSubmit={handleCrearMovimiento} />
       
-      {/* ✅ NUEVO MODAL MOVIMIENTO */}
-      <DetallesMovimientoModal open={showDetalleMovimiento} onClose={() => setShowDetalleMovimiento(false)} movimiento={movimientoSeleccionado} onUpdate={handleUpdateMovimiento} />
+      {/* ✅ NUEVO MODAL MOVIMIENTO: Recibe cupones para el select */}
+      <DetallesMovimientoModal 
+        open={showDetalleMovimiento} 
+        onClose={() => setShowDetalleMovimiento(false)} 
+        movimiento={movimientoSeleccionado} 
+        onUpdate={handleUpdateMovimiento}
+        cupones={cupones} 
+      />
 
       <ConfirmDialog open={confirmOpen} title={confirmPayload.title} message={confirmPayload.message} confirmLabel="Eliminar" cancelLabel="Cancelar" onCancel={() => setConfirmOpen(false)} onConfirm={handleConfirmarEliminacion} />
       <ValidadoCard open={validadoOpen} title={validadoData.title} message={validadoData.message} onClose={() => setValidadoOpen(false)} />

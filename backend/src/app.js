@@ -11,6 +11,8 @@ import descuentosRoutes from "./routes/descuentos.routes.js";
 import staffRoutes from "./routes/staff.routes.js";
 import configuracionRoutes from "./routes/configuracion.routes.js";
 import comprasRoutes from "./routes/compras.routes.js"; // ✅ NUEVO
+import dashboardRoutes from "./routes/dashboard.routes.js";
+import publicRoutes from "./routes/public.routes.js";
 
 export const app = express();
 
@@ -61,6 +63,8 @@ app.get("/health", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/clientes", clientesRoutes);
 app.use("/api/descuentos", descuentosRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/public", publicRoutes);
 
 // ✅ STAFF
 app.use("/api/staff", staffRoutes);
