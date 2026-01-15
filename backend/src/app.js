@@ -54,6 +54,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// ---------------------------------------------------------
+// 👇 NUEVA RUTA: El despertador para Render
+// ---------------------------------------------------------
+app.get("/ping", (req, res) => {
+  res.status(200).send("pong 🏓");
+});
+// ---------------------------------------------------------
+
 // Healthcheck (Render friendly)
 app.get("/health", (req, res) => {
   res.json({ ok: true, service: "Fideliza+ Backend" });
