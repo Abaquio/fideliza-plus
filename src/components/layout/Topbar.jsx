@@ -7,7 +7,6 @@ import { useNavigate } from "react-router-dom"
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
 
 function getAuthToken() {
-  // soporte local + session + varias llaves
   const keys = ["token", "authToken", "access_token", "accessToken"]
   for (const k of keys) {
     const a = localStorage.getItem(k)
@@ -21,60 +20,39 @@ function getAuthToken() {
 async function fetchMe() {
   const token = getAuthToken()
   if (!token) return null
-
-  // probamos ambas por si montaste distinto
   const candidates = [`${API_URL}/api/auth/me`, `${API_URL}/auth/me`]
-
   for (const url of candidates) {
     try {
-      const resp = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       const json = await resp.json().catch(() => ({}))
-
-      // tu backend responde { ok:true, user:{...} }
       const u = json?.user || json?.data
-      if (resp.ok && (json?.ok === true || typeof json?.ok === "undefined") && u) {
-        return u
-      }
-    } catch {
-      // seguimos
-    }
+      if (resp.ok && (json?.ok === true || typeof json?.ok === "undefined") && u) return u
+    } catch { }
   }
-
   return null
 }
 
-export default function Topbar({ user, toggleSidebar }) {
+// ✅ CORRECCIÓN: Agregamos 'onMenuClick' para recibir la orden desde App.jsx
+export default function Topbar({ user, toggleSidebar, onMenuClick }) {
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef(null)
   const navigate = useNavigate()
-
-  // ✅ este user es el REAL (BD)
   const [me, setMe] = useState(null)
 
-  // ✅ mantener compatibilidad: si hay props user, lo usamos como fallback,
-  // pero priorizamos "me" cuando exista
   const effectiveUser = me || user || {}
-
   const displayName = effectiveUser?.nombre || effectiveUser?.name || "Usuario"
   const displayEmail = effectiveUser?.email || ""
-  const displayAvatar =
-    effectiveUser?.avatar ||
-    (displayName?.[0] ? displayName[0].toUpperCase() : "U")
+  const displayAvatar = effectiveUser?.avatar || (displayName?.[0] ? displayName[0].toUpperCase() : "U")
 
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!showDropdown) return
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowDropdown(false)
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowDropdown(false)
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [showDropdown])
 
-  // ✅ carga inicial desde BD
   useEffect(() => {
     const run = async () => {
       const u = await fetchMe()
@@ -83,50 +61,36 @@ export default function Topbar({ user, toggleSidebar }) {
     run()
   }, [])
 
-  // ✅ cuando se actualiza el perfil, recargar /me (BD)
   useEffect(() => {
     const reload = async () => {
       const u = await fetchMe()
       if (u) setMe(u)
     }
-
     window.addEventListener("profile-updated", reload)
     window.addEventListener("auth-changed", reload)
-
     return () => {
       window.removeEventListener("profile-updated", reload)
       window.removeEventListener("auth-changed", reload)
     }
   }, [])
 
-  const handleViewProfile = () => {
-    setShowDropdown(false)
-    navigate("/perfil")
-  }
-
-  const clearSessionEverywhere = () => {
-    const keys = ["token", "authToken", "access_token", "accessToken", "user", "usuario", "authUser"]
-    keys.forEach((k) => {
-      localStorage.removeItem(k)
-      sessionStorage.removeItem(k)
-    })
-  }
-
   const handleLogout = () => {
     setShowDropdown(false)
-    clearSessionEverywhere()
-
+    const keys = ["token", "authToken", "access_token", "accessToken", "user", "usuario", "authUser"]
+    keys.forEach((k) => { localStorage.removeItem(k); sessionStorage.removeItem(k) })
     window.dispatchEvent(new Event("auth-changed"))
     window.dispatchEvent(new Event("profile-updated"))
-
     navigate("/login", { replace: true })
   }
 
   return (
     <header className="bg-card border-b border-border h-16 flex items-center justify-between px-6 sticky top-0 z-40 animate-slide-in-left">
       <div className="flex items-center gap-4">
+        {/* ✅ AQUÍ ESTÁ EL ARREGLO:
+            Si existe onMenuClick (que viene de App.jsx), lo usa. 
+            Si no, intenta usar toggleSidebar. */}
         <button
-          onClick={toggleSidebar}
+          onClick={onMenuClick || toggleSidebar}
           className="lg:hidden p-2 hover:bg-muted rounded-lg transition-colors"
         >
           <Menu className="w-5 h-5" />
@@ -153,18 +117,15 @@ export default function Topbar({ user, toggleSidebar }) {
               <p className="font-medium">{displayName}</p>
               <p className="text-xs text-muted-foreground">{displayEmail}</p>
             </div>
-
             <div className="p-2">
               <button
-                onClick={handleViewProfile}
+                onClick={() => { setShowDropdown(false); navigate("/perfil") }}
                 className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted rounded-lg transition-colors text-left"
               >
                 <User className="w-4 h-4" />
                 <span className="text-sm">Ver Perfil</span>
               </button>
-
               <div className="my-1 border-t border-border"></div>
-
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-3 py-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors text-left"
