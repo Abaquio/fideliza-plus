@@ -1,28 +1,30 @@
 import nodemailer from 'nodemailer';
 
-// ✅ Configuración ROBUSTA para Gmail desde la nube (Render)
+// ✅ Configuración BREVO (Puerto 2525 para evitar bloqueo de Render)
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com", // Servidor explícito
-  port: 465,              // Puerto seguro SSL (El que no falla)
-  secure: true,           // Usar SSL
+  host: "smtp-relay.brevo.com", // Host de Brevo
+  port: 2525,                   // 🚨 PUERTO 2525: El único que funciona en Render Free
+  secure: false,                // false para puerto 2525
   auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS
+    user: process.env.GMAIL_USER, // Tu usuario: a0140c001@smtp-brevo.com
+    pass: process.env.GMAIL_PASS  // Tu clave SMTP: xsmtpsib-...
   },
-  family: 4 // 🔧 TRUCO CLAVE: Fuerza IPv4 para evitar timeouts en Render
+  tls: {
+    rejectUnauthorized: false   // Evita errores de certificados
+  }
 });
 
-// Verificación de conexión al iniciar (Para que sepas si conectó bien)
-transporter.verify().then(() => {
-  console.log('✅ Nodemailer: Conectado a Gmail correctamente.');
-}).catch((error) => {
-  console.error('❌ Nodemailer Error:', error);
-});
+// Verificación de conexión
+transporter.verify()
+  .then(() => console.log('✅ Brevo SMTP: Conectado correctamente (Puerto 2525)'))
+  .catch((error) => console.error('❌ Brevo Error:', error));
 
-const EMAIL_REMITENTE = `"Fideliza+" <${process.env.GMAIL_USER}>`;
+// El correo que verán los clientes (debe estar verificado en Brevo)
+// Si no definiste EMAIL_FROM en el .env, usa una cadena vacía o un default
+const EMAIL_REMITENTE = `"Fideliza+" <${process.env.EMAIL_FROM || 'no-reply@fideliza.cl'}>`;
 
 /**
- * 1. Correo para CLIENTES (Registro QR / Manual)
+ * 1. Correo para CLIENTES
  */
 export const enviarCorreoBienvenidaCliente = async (email, nombre) => {
   try {
@@ -34,25 +36,24 @@ export const enviarCorreoBienvenidaCliente = async (email, nombre) => {
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
           <h1 style="color: #4F46E5;">¡Hola, ${nombre}! 👋</h1>
           <p>Te damos la bienvenida a <strong>Fideliza+</strong>.</p>
-          <p>Tu registro fue exitoso. Ahora, cada vez que compres, dicta tu RUT para sumar puntos.</p>
+          <p>Tu registro fue exitoso.</p>
           <div style="background-color: #F3F4F6; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0;">
-            <p style="margin: 0; font-weight: bold; color: #374151;">🎉 ¡Ya eres parte del club!</p>
+            <p style="margin: 0; font-weight: bold; color: #374151;">🎉 ¡Gracias por unirte!</p>
           </div>
           <p>Saludos,<br>El equipo.</p>
         </div>
       `,
     });
-
-    console.log("✅ Correo cliente enviado ID:", info.messageId);
+    console.log("✅ Correo enviado ID:", info.messageId);
     return true;
   } catch (e) {
-    console.error("❌ Error enviando correo cliente:", e);
+    console.error("❌ Error enviando correo:", e);
     return false;
   }
 };
 
 /**
- * 2. Correo para STAFF (Cuando creas un usuario en el admin)
+ * 2. Correo para STAFF
  */
 export const enviarCorreoBienvenidaStaff = async (email, nombre, password) => {
   try {
@@ -63,17 +64,14 @@ export const enviarCorreoBienvenidaStaff = async (email, nombre, password) => {
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
           <h2 style="color: #059669;">¡Bienvenido al equipo, ${nombre}!</h2>
-          <p>Se ha creado tu cuenta de acceso al panel de administración.</p>
           <p>Tus credenciales temporales son:</p>
           <ul style="background-color: #ECFDF5; padding: 15px 30px; border-radius: 8px; border: 1px solid #A7F3D0;">
             <li><strong>Email:</strong> ${email}</li>
             <li><strong>Contraseña:</strong> ${password}</li>
           </ul>
-          <p>Por favor, ingresa y cambia tu contraseña lo antes posible.</p>
         </div>
       `,
     });
-
     console.log("✅ Correo staff enviado ID:", info.messageId);
     return true;
   } catch (e) {
