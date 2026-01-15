@@ -1,16 +1,22 @@
 import nodemailer from 'nodemailer';
 
-console.log("📧 INTENTO DE ENVÍO:");
-console.log("User:", process.env.GMAIL_USER);
-console.log("Pass:", process.env.GMAIL_PASS ? "******** (Si existe)" : "VACÍO (Error)");
-
-// Configuración del "Cartero" de Gmail
+// ✅ Configuración ROBUSTA para Gmail desde la nube (Render)
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: "smtp.gmail.com", // Servidor explícito
+  port: 465,              // Puerto seguro SSL (El que no falla)
+  secure: true,           // Usar SSL
   auth: {
-    user: process.env.GMAIL_USER, // Tu correo Gmail
-    pass: process.env.GMAIL_PASS  // La contraseña de aplicación de 16 letras
-  }
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS
+  },
+  family: 4 // 🔧 TRUCO CLAVE: Fuerza IPv4 para evitar timeouts en Render
+});
+
+// Verificación de conexión al iniciar (Para que sepas si conectó bien)
+transporter.verify().then(() => {
+  console.log('✅ Nodemailer: Conectado a Gmail correctamente.');
+}).catch((error) => {
+  console.error('❌ Nodemailer Error:', error);
 });
 
 const EMAIL_REMITENTE = `"Fideliza+" <${process.env.GMAIL_USER}>`;
@@ -22,7 +28,7 @@ export const enviarCorreoBienvenidaCliente = async (email, nombre) => {
   try {
     const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
-      to: email, // El correo del cliente
+      to: email, 
       subject: '¡Bienvenido a Fideliza+! 🎁',
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
