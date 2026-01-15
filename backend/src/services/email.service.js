@@ -1,18 +1,28 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
-// Asegúrate de que esta variable esté en tu archivo .env
-const resend = new Resend(process.env.RESEND_API_KEY);
+console.log("📧 INTENTO DE ENVÍO:");
+console.log("User:", process.env.GMAIL_USER);
+console.log("Pass:", process.env.GMAIL_PASS ? "******** (Si existe)" : "VACÍO (Error)");
 
-const EMAIL_REMITENTE = 'Fideliza+ <onboarding@resend.dev>'; // O tu dominio verificado
+// Configuración del "Cartero" de Gmail
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER, // Tu correo Gmail
+    pass: process.env.GMAIL_PASS  // La contraseña de aplicación de 16 letras
+  }
+});
+
+const EMAIL_REMITENTE = `"Fideliza+" <${process.env.GMAIL_USER}>`;
 
 /**
  * 1. Correo para CLIENTES (Registro QR / Manual)
  */
 export const enviarCorreoBienvenidaCliente = async (email, nombre) => {
   try {
-    const { error } = await resend.emails.send({
+    const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
-      to: [email],
+      to: email, // El correo del cliente
       subject: '¡Bienvenido a Fideliza+! 🎁',
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
@@ -27,13 +37,10 @@ export const enviarCorreoBienvenidaCliente = async (email, nombre) => {
       `,
     });
 
-    if (error) {
-      console.error("Error envío correo cliente:", error);
-      return false;
-    }
+    console.log("✅ Correo cliente enviado ID:", info.messageId);
     return true;
   } catch (e) {
-    console.error("Excepción email cliente:", e);
+    console.error("❌ Error enviando correo cliente:", e);
     return false;
   }
 };
@@ -43,9 +50,9 @@ export const enviarCorreoBienvenidaCliente = async (email, nombre) => {
  */
 export const enviarCorreoBienvenidaStaff = async (email, nombre, password) => {
   try {
-    const { error } = await resend.emails.send({
+    const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
-      to: [email],
+      to: email,
       subject: 'Bienvenido al equipo - Acceso Fideliza+',
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
@@ -61,13 +68,10 @@ export const enviarCorreoBienvenidaStaff = async (email, nombre, password) => {
       `,
     });
 
-    if (error) {
-      console.error("Error envío correo staff:", error);
-      return false;
-    }
+    console.log("✅ Correo staff enviado ID:", info.messageId);
     return true;
   } catch (e) {
-    console.error("Excepción email staff:", e);
+    console.error("❌ Error enviando correo staff:", e);
     return false;
   }
 };
