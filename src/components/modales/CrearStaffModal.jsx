@@ -141,8 +141,8 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
       !fieldErrors.nombre &&
       !fieldErrors.email &&
       !fieldErrors.rolId &&
-      form.nombre.trim() &&
-      form.email.trim() &&
+      form.nombre?.trim() && // Optional chaining por seguridad
+      form.email?.trim() &&
       form.rolId
 
     if (!isEdit) return baseOk && !!form.password
@@ -164,11 +164,18 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
     if (key === "rolId") setFieldErrors((p) => ({ ...p, rolId: validateRolLive(value) }))
   }
 
+  // ✅ CORRECCIÓN 1: Manejo de objeto vs string en Blur
   const handleNombreBlur = () => {
     markTouched("nombre")
     try {
-      const norm = validarYNormalizarNombre(form.nombre)
-      setForm((p) => ({ ...p, nombre: norm }))
+      const resultado = validarYNormalizarNombre(form.nombre)
+      
+      // Si la función devuelve un objeto {valor:..., valido:true}, extraemos el valor
+      const nombreLimpio = (typeof resultado === 'object' && resultado.valor) 
+        ? resultado.valor 
+        : resultado
+
+      setForm((p) => ({ ...p, nombre: nombreLimpio }))
       setFieldErrors((p) => ({ ...p, nombre: "" }))
     } catch {
       setFieldErrors((p) => ({ ...p, nombre: "Solo letras y espacios" }))
@@ -191,8 +198,19 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
       const API = getApiBase()
       const token = getToken()
 
+      // ✅ CORRECCIÓN 2: Asegurar que enviamos un string al backend
+      let nombreFinal = form.nombre.trim();
+      try {
+         const resultado = validarYNormalizarNombre(form.nombre);
+         nombreFinal = (typeof resultado === 'object' && resultado.valor) 
+            ? resultado.valor 
+            : resultado;
+      } catch (e) {
+         // Si falla pero forzamos envío, usamos lo que hay en el input
+      }
+
       const payload = {
-        nombre: validarYNormalizarNombre(form.nombre),
+        nombre: nombreFinal, // Ahora va limpio
         email: form.email.trim(),
         rol_id: form.rolId,
         sucursal_id: form.sucursalId || null,

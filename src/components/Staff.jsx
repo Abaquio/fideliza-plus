@@ -49,6 +49,30 @@ async function safeJsonFetch(url, options) {
   return { res, data }
 }
 
+// ✅ FUNCIÓN DE LIMPIEZA: Saca el nombre real si viene "sucio" como objeto JSON
+function limpiarNombre(nombreRaw) {
+  if (!nombreRaw) return "Sin nombre";
+  
+  // Caso 1: Es un objeto JS real (el error actual en memoria)
+  if (typeof nombreRaw === 'object' && nombreRaw.valor) {
+    return nombreRaw.valor;
+  }
+
+  // Caso 2: Es un string que parece JSON (lo que viene de la BD mal guardado)
+  if (typeof nombreRaw === 'string' && (nombreRaw.startsWith('{') || nombreRaw.startsWith('"{'))) {
+    try {
+      // A veces se guarda con doble comilla al principio
+      const parsed = JSON.parse(nombreRaw);
+      return parsed.valor || nombreRaw;
+    } catch (e) {
+      return nombreRaw;
+    }
+  }
+
+  // Caso 3: Es un string normal (correcto)
+  return nombreRaw;
+}
+
 export default function Staff() {
   const [showModal, setShowModal] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
@@ -170,83 +194,91 @@ export default function Staff() {
 
       {/* Staff Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {staff.map((member, index) => (
-          <div
-            key={member.id}
-            className="bg-card border border-border rounded-xl p-6 hover-lift animate-scale-in"
-            style={{ animationDelay: `${index * 0.1}s` }}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-14 h-14 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center text-white text-xl font-bold">
-                  {member.nombre
-                    ?.split(" ")
-                    .map((n) => n[0])
-                    .join("")}
+        {staff.map((member, index) => {
+          // 🛡️ LIMPIEZA AQUÍ: Obtenemos el nombre limpio para mostrar
+          const nombreLimpio = limpiarNombre(member.nombre);
+
+          return (
+            <div
+              key={member.id}
+              className="bg-card border border-border rounded-xl p-6 hover-lift animate-scale-in"
+              style={{ animationDelay: `${index * 0.1}s` }}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center text-white text-xl font-bold">
+                    {nombreLimpio
+                      ?.split(" ")
+                      .map((n) => n[0])
+                      .join("")}
+                  </div>
+                  <div>
+                    {/* Usamos el nombre limpio para que no muestre el JSON */}
+                    <h3 className="font-bold text-lg">{nombreLimpio}</h3>
+                    <span
+                      className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getRoleColor(
+                        member.roles?.nombre
+                      )}`}
+                    >
+                      {member.roles?.nombre}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg">{member.nombre}</h3>
-                  <span
-                    className={`inline-block px-2 py-0.5 text-xs rounded-full border ${getRoleColor(
-                      member.roles?.nombre
-                    )}`}
-                  >
-                    {member.roles?.nombre}
+                <div className={`w-3 h-3 rounded-full ${member.activo ? "bg-primary" : "bg-muted"}`} />
+              </div>
+
+              {/* Información de Contacto */}
+              <div className="space-y-2 mb-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Mail className="w-4 h-4" />
+                  <span>{member.email}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Phone className="w-4 h-4" />
+                  <span>—</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="w-4 h-4" />
+                  <span>Registrado</span>
+                </div>
+              </div>
+
+              {/* Permisos */}
+              <div className="mb-4">
+                <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Permisos
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <span className="px-2 py-1 bg-muted text-muted-foreground text-xs rounded-md">
+                    {member.roles?.nombre || "Sin rol"}
                   </span>
                 </div>
               </div>
-              <div className={`w-3 h-3 rounded-full ${member.activo ? "bg-primary" : "bg-muted"}`} />
-            </div>
 
-            {/* Información de Contacto */}
-            <div className="space-y-2 mb-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Mail className="w-4 h-4" />
-                <span>{member.email}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Phone className="w-4 h-4" />
-                <span>—</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="w-4 h-4" />
-                <span>Registrado</span>
-              </div>
-            </div>
-
-            {/* Permisos */}
-            <div className="mb-4">
-              <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                Permisos
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <span className="px-2 py-1 bg-muted text-muted-foreground text-xs rounded-md">
-                  {member.roles?.nombre || "Sin rol"}
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-4 border-t border-border">
+                <span className="text-xs text-muted-foreground">
+                  Estado: {member.activo ? "Activo" : "Inactivo"}
                 </span>
+                <div className="flex gap-2">
+                  <button
+                    className="px-3 py-1 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                    onClick={() => {
+                      // 🛡️ IMPORTANTE: Pasamos una copia con el nombre limpio.
+                      // Así el Modal recibe un string y no falla el .trim()
+                      setEditingMember({ ...member, nombre: nombreLimpio })
+                      setShowModal(true)
+                    }}
+                  >
+                    Editar
+                  </button>
+                </div>
               </div>
             </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between pt-4 border-t border-border">
-              <span className="text-xs text-muted-foreground">
-                Estado: {member.activo ? "Activo" : "Inactivo"}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  className="px-3 py-1 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
-                  onClick={() => {
-                    setEditingMember(member)
-                    setShowModal(true)
-                  }}
-                >
-                  Editar
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <CrearStaffModal
