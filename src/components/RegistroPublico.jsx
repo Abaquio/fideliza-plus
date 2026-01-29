@@ -3,6 +3,9 @@
 import { useState } from "react"
 import { CheckCircle, Gift, Loader2, AlertTriangle, AlertCircle } from "lucide-react"
 
+// ✅ Importamos el Modal de Términos (Asegúrate que la ruta sea correcta según tu estructura)
+import TerminosCondicionesModal from "../components/modales/TerminosCondiciones-modal"
+
 // ✅ Usamos las funciones actualizadas
 import {
   normalizarRut, 
@@ -27,6 +30,10 @@ export default function RegistroPublico() {
   const [loading, setLoading] = useState(false)
   const [generalError, setGeneralError] = useState("")
   const [successMsg, setSuccessMsg] = useState("")
+
+  // ✅ NUEVO: Estados para Términos y Condiciones
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [showTerms, setShowTerms] = useState(false)
 
   const [form, setForm] = useState({
     rut: "",
@@ -123,6 +130,12 @@ export default function RegistroPublico() {
       return
     }
 
+    // ✅ NUEVO: Validación de Checkbox
+    if (!acceptedTerms) {
+      setGeneralError("Debes aceptar los Términos y Condiciones para registrarte.")
+      return
+    }
+
     setLoading(true)
     setGeneralError("")
 
@@ -189,116 +202,143 @@ export default function RegistroPublico() {
     }`
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden animate-fade-in">
-      <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none" />
-      
-      <div className="w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-10 animate-scale-in">
-        <div className="bg-gradient-to-b from-primary/5 to-transparent p-6 text-center border-b border-border">
-          <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-3 shadow-lg shadow-primary/20">
-            F+
+    <>
+      {/* ✅ Modal Renderizado aquí */}
+      <TerminosCondicionesModal open={showTerms} onClose={() => setShowTerms(false)} />
+
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden animate-fade-in">
+        <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none" />
+        
+        <div className="w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-10 animate-scale-in">
+          <div className="bg-gradient-to-b from-primary/5 to-transparent p-6 text-center border-b border-border">
+            <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-3 shadow-lg shadow-primary/20">
+              F+
+            </div>
+            <h1 className="text-2xl font-bold text-foreground">Fideliza+</h1>
+            <p className="text-sm text-muted-foreground">Únete hoy y gana puntos en cada compra</p>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Fideliza+</h1>
-          <p className="text-sm text-muted-foreground">Únete hoy y gana puntos en cada compra</p>
+
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            
+            {generalError && (
+              <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-lg text-sm flex items-start gap-2 animate-pulse">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{generalError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">RUT</label>
+              <input
+                name="rut"
+                value={form.rut}
+                onChange={handleChange}
+                placeholder="12345678-9"
+                className={getInputClass(!!errors.rut)}
+                maxLength={12}
+              />
+              {errors.rut && (
+                <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3"/> {errors.rut}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre</label>
+                <input
+                  name="nombres"
+                  value={form.nombres}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  placeholder="Juan"
+                  className={getInputClass(false)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Apellidos</label>
+                <input
+                  name="apellidos"
+                  value={form.apellidos}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  placeholder="Pérez"
+                  className={getInputClass(false)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Correo Electrónico</label>
+              <input
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                placeholder="hola@ejemplo.com"
+                className={getInputClass(!!errors.email)}
+              />
+              {errors.email && (
+                <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3"/> {errors.email}
+                </p>
+              )}
+            </div>
+
+            {/* ✅ Teléfono OBLIGATORIO */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Teléfono</label>
+              <input
+                name="telefono"
+                type="tel"
+                value={form.telefono}
+                onChange={handleChange}
+                onFocus={() => {
+                   if (!form.telefono) setForm(prev => ({...prev, telefono: "+56"}))
+                }}
+                placeholder="+56 9 ..."
+                className={getInputClass(!!errors.telefono)}
+              />
+              {errors.telefono && <p className="text-xs text-red-500 mt-1 ml-1">{errors.telefono}</p>}
+            </div>
+
+            {/* ✅ SECCIÓN TÉRMINOS Y CONDICIONES (REEMPLAZANDO EL TEXTO ESTÁTICO) */}
+            <div className="flex items-start gap-3 mt-4 px-1 pt-2">
+              <input
+                type="checkbox"
+                id="terms-check"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-1 w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+              />
+              <label htmlFor="terms-check" className="text-xs text-muted-foreground leading-snug cursor-pointer select-none">
+                He leído y acepto los{" "}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowTerms(true);
+                  }}
+                  className="text-primary hover:underline font-bold focus:outline-none"
+                >
+                  Términos y Condiciones
+                </button>
+                , incluyendo el uso de mis datos para recibir beneficios de Fideliza+.
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-gradient-to-r from-primary to-accent hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "¡Registrarme y Ganar Puntos!"}
+            </button>
+
+          </form>
         </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          
-          {generalError && (
-            <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-lg text-sm flex items-start gap-2 animate-pulse">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>{generalError}</span>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">RUT</label>
-            <input
-              name="rut"
-              value={form.rut}
-              onChange={handleChange}
-              placeholder="12345678-9"
-              className={getInputClass(!!errors.rut)}
-              maxLength={12}
-            />
-            {errors.rut && (
-              <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3"/> {errors.rut}
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre</label>
-              <input
-                name="nombres"
-                value={form.nombres}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                placeholder="Juan"
-                className={getInputClass(false)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Apellidos</label>
-              <input
-                name="apellidos"
-                value={form.apellidos}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                placeholder="Pérez"
-                className={getInputClass(false)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Correo Electrónico</label>
-            <input
-              name="email"
-              type="email"
-              value={form.email}
-              onChange={handleChange}
-              placeholder="hola@ejemplo.com"
-              className={getInputClass(!!errors.email)}
-            />
-            {errors.email && (
-              <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3"/> {errors.email}
-              </p>
-            )}
-          </div>
-
-          {/* ✅ Teléfono OBLIGATORIO */}
-          <div>
-            <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Teléfono</label>
-            <input
-              name="telefono"
-              type="tel"
-              value={form.telefono}
-              onChange={handleChange}
-              onFocus={() => {
-                 if (!form.telefono) setForm(prev => ({...prev, telefono: "+56"}))
-              }}
-              placeholder="+56 9 ..."
-              className={getInputClass(!!errors.telefono)}
-            />
-            {errors.telefono && <p className="text-xs text-red-500 mt-1 ml-1">{errors.telefono}</p>}
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3.5 bg-gradient-to-r from-primary to-accent hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "¡Registrarme y Ganar Puntos!"}
-          </button>
-
-          <p className="text-center text-xs text-muted-foreground mt-4 px-4">
-            Al registrarte aceptas recibir correos promocionales de Fideliza+.
-          </p>
-        </form>
       </div>
-    </div>
+    </>
   )
 }
