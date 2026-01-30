@@ -89,7 +89,7 @@ export default function TerminosCondicionesModal({ open, onClose }) {
               <li><strong>Acceso:</strong> Solicitar reporte de sus datos almacenados.</li>
               <li><strong>Rectificación:</strong> Corregir errores en su identificación (RUT, Nombre).</li>
               <li><strong>Cancelación:</strong> Solicitar la eliminación total de su cuenta.</li>
-              <li><strong>Oposición:</strong> Negarse al uso de datos para fines publicitarios.</li>
+              <li><strong>Oposición:</strong> Negarse al uso de datos para fines publicitarios mediante comunicación por escrito a Medical Season.</li>
             </ul>
           </section>
 
@@ -111,7 +111,7 @@ export default function TerminosCondicionesModal({ open, onClose }) {
             <h3 className="font-bold text-foreground mb-2">5. Propiedad Intelectual</h3>
             <p className="text-muted-foreground text-sm">
               Esta implementación de <strong>Fideliza+</strong> es exclusiva para <strong>Medical Season</strong>. 
-              La marca, base de datos y registros son propiedad del cliente. El núcleo tecnológico (Core Software) es propiedad intelectual del desarrollador, licenciado para uso perpetuo de Medical Season.
+              La marca, base de datos y registros son propiedad de Medical Season. El núcleo tecnológico (Core Software) es propiedad intelectual del desarrollador, licenciado para uso perpetuo de Medical Season.
             </p>
           </section>
         </div>
