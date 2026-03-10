@@ -2,25 +2,22 @@ import nodemailer from 'nodemailer';
 
 // ✅ Configuración BREVO (Puerto 2525 para evitar bloqueo de Render)
 const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com", // Host de Brevo
-  port: 2525,                   // 🚨 PUERTO 2525: El único que funciona en Render Free
-  secure: false,                // false para puerto 2525
+  host: "smtp-relay.brevo.com", 
+  port: 2525,                   
+  secure: false,                
   auth: {
-    user: process.env.GMAIL_USER, // Tu usuario: a0140c001@smtp-brevo.com
-    pass: process.env.GMAIL_PASS  // Tu clave SMTP: xsmtpsib-...
+    user: process.env.GMAIL_USER, 
+    pass: process.env.GMAIL_PASS  
   },
   tls: {
-    rejectUnauthorized: false   // Evita errores de certificados
+    rejectUnauthorized: false   
   }
 });
 
-// Verificación de conexión
 transporter.verify()
   .then(() => console.log('✅ Brevo SMTP: Conectado correctamente (Puerto 2525)'))
   .catch((error) => console.error('❌ Brevo Error:', error));
 
-// El correo que verán los clientes (debe estar verificado en Brevo)
-// Si no definiste EMAIL_FROM en el .env, usa una cadena vacía o un default
 const EMAIL_REMITENTE = `"Fideliza+" <${process.env.EMAIL_FROM || 'no-reply@fideliza.cl'}>`;
 
 /**
@@ -81,7 +78,7 @@ export const enviarCorreoBienvenidaStaff = async (email, nombre, password) => {
 };
 
 /**
- * ✅ NUEVO: 3. Correo de confirmación para el CLIENTE (Bordados)
+ * 3. Correo de confirmación para el CLIENTE (Bordados)
  */
 export const enviarCorreoConfirmacionBordado = async (email, nombre) => {
   try {
@@ -110,21 +107,31 @@ export const enviarCorreoConfirmacionBordado = async (email, nombre) => {
 };
 
 /**
- * ✅ NUEVO: 4. Correo de aviso para TIENDA (Bordados - MODO PRUEBA)
+ * 4. Correo de aviso para TIENDA (Bordados - MODO PRUEBA)
+ * ✅ AHORA CON SOPORTE PARA ADJUNTOS BASE64
  */
 export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
   try {
     const {
       contacto_nombre, contacto_apellido, contacto_rut, contacto_telefono, contacto_correo,
       modelo_bordado, bordado_nombre, bordado_apellido, bordado_profesion, bordado_universidad,
-      especificaciones
+      especificaciones, logo_base64 // 👈 AQUÍ RECIBIMOS LA IMAGEN
     } = datos;
+
+    // 👈 PREPARAMOS EL ARCHIVO ADJUNTO SI EL CLIENTE SUBIÓ UNO
+    const attachments = [];
+    if (logo_base64) {
+      attachments.push({
+        filename: `Logo_${contacto_nombre}_${contacto_apellido}.jpg`.replace(/\s+/g, '_'),
+        path: logo_base64 // Nodemailer convierte el texto Base64 en archivo automáticamente
+      });
+    }
 
     const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
-      // 👇 CORREO DE PRUEBAS APLICADO
-      to: 'fidelizaplus.chile@gmail.com', 
+      to: 'fidelizaplus.chile@gmail.com', // Correo de pruebas tuyo
       subject: `Nueva Solicitud de Bordado - ${contacto_nombre} ${contacto_apellido}`,
+      attachments, // 👈 LE PASAMOS EL ARRAY DE ADJUNTOS A NODEMAILER
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
           <h2 style="color: #4F46E5;">Nueva Solicitud de Bordado 🧵</h2>
@@ -153,7 +160,7 @@ export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
           </p>
           
           <p style="color: #666; font-size: 12px; margin-top: 20px;">
-            * Si el cliente indicó tener un logo propio, asegúrate de contactarlo para que envíe el archivo.
+            ${logo_base64 ? '✅ El cliente adjuntó su logo propio. Lo encontrarás en los archivos adjuntos de este correo.' : ''}
           </p>
         </div>
       `,
