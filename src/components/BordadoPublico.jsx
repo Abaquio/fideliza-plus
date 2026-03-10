@@ -150,8 +150,9 @@ export default function BordadoPublico() {
     const file = e.target.files[0]
     setGeneralError("")
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setErrors(prev => ({ ...prev, logoFile: "El archivo pesa más de 2MB" }))
+      // ✅ Subimos el límite de validación a 10MB
+      if (file.size > 10 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, logoFile: "El archivo es demasiado grande (Máx 10MB)" }))
         setLogoFile(null)
       } else {
         setErrors(prev => ({ ...prev, logoFile: "" }))
@@ -406,7 +407,8 @@ export default function BordadoPublico() {
               <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-2">
                 <Upload className="w-5 h-5 text-primary" /> 4. Adjunta tu Logo
               </h2>
-              <p className="text-sm text-muted-foreground mb-4">Requerido en formato PNG o JPG (hasta 2MB).</p>
+              {/* ✅ Texto actualizado para que el cliente sepa que puede subir hasta 10MB */}
+              <p className="text-sm text-muted-foreground mb-4">Requerido en formato PNG o JPG (hasta 10MB. Se comprimirá automáticamente).</p>
               
               <div className="flex items-center justify-center w-full">
                 <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${errors.logoFile ? 'border-red-400 bg-red-50/50' : logoFile ? 'border-green-400 bg-green-50/50' : 'border-primary/30 bg-primary/5 hover:bg-primary/10'}`}>
@@ -420,7 +422,8 @@ export default function BordadoPublico() {
                       <>
                         <Upload className="w-8 h-8 mb-3 text-primary/60" />
                         <p className="mb-1 text-sm text-foreground/80"><span className="font-semibold text-primary">Haz clic para subir</span> o arrastra</p>
-                        <p className="text-xs text-muted-foreground">PNG, JPG (MAX. 2MB)</p>
+                        {/* ✅ Texto actualizado en la caja */}
+                        <p className="text-xs text-muted-foreground">PNG, JPG (MAX. 10MB)</p>
                       </>
                     )}
                   </div>
