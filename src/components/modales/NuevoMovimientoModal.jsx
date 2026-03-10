@@ -3,6 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { X, User, Ticket, Plus, Minus, AlertTriangle } from "lucide-react"
 
+// ✅ Helpers para hacer fetch en tiempo real
+function getApiBase() {
+  const fromEnv = import.meta?.env?.VITE_API_URL
+  if (fromEnv) return String(fromEnv).replace(/\/$/, "")
+  const host = window.location.hostname
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
+  return "https://fideliza-plus.onrender.com"
+}
+
+function getToken() {
+  const directKeys = ["token", "access_token", "auth_token", "jwt", "session_token"]
+  for (const k of directKeys) {
+    const v = sessionStorage.getItem(k) || localStorage.getItem(k)
+    if (v) return v
+  }
+  return ""
+}
+
 const TIPOS = [
   { value: "ajuste", label: "Ajuste manual" },
   { value: "canje", label: "Canje de cupón" },
@@ -11,17 +29,19 @@ const TIPOS = [
 export default function NuevoMovimientoModal({
   open,
   onClose,
-  clientes = [],
+  clientes = [], // Lo mantenemos por compatibilidad
   cupones = [],
-  // ✅ fallback si por algún motivo no viene puntos_total en clientes
   puntosActuales = 0,
   onSubmit,
 }) {
   const [tipo, setTipo] = useState("ajuste")
 
-  // ✅ búsqueda tipo autocomplete
+  // ✅ búsqueda directa a la base de datos
   const [clienteId, setClienteId] = useState("")
+  const [clienteObj, setClienteObj] = useState(null)
   const [clienteQuery, setClienteQuery] = useState("")
+  const [clientesBuscados, setClientesBuscados] = useState([])
+  const [buscando, setBuscando] = useState(false)
   const [showSuggest, setShowSuggest] = useState(false)
   const inputRef = useRef(null)
 
@@ -35,13 +55,17 @@ export default function NuevoMovimientoModal({
   const [submitError, setSubmitError] = useState("")
   const [touched, setTouched] = useState(false)
 
+  const normalize = (s) => String(s || "").trim().toLowerCase()
+
   // Reset al abrir
   useEffect(() => {
     if (!open) return
 
     setTipo("ajuste")
     setClienteId("")
+    setClienteObj(null)
     setClienteQuery("")
+    setClientesBuscados([])
     setShowSuggest(false)
     setAjusteOperacion("sumar")
     setAjusteCantidad("")
@@ -51,70 +75,62 @@ export default function NuevoMovimientoModal({
     setTouched(false)
   }, [open])
 
-  const normalize = (s) => String(s || "").trim().toLowerCase()
-
-  // Filtramos primero solo los clientes ACTIVOS
-  const clientesActivos = useMemo(() => {
-    return clientes.filter((c) => normalize(c.estado) === "activo")
-  }, [clientes])
-
-  const clientesFiltrados = useMemo(() => {
+  // ✅ EFECTO MAGICO: Busca en la base de datos a medida que escribes
+  useEffect(() => {
     const q = normalize(clienteQuery)
-    if (!q) return []
-    return clientesActivos
-      .filter((c) => {
-        const nombre = normalize(`${c.nombres || ""} ${c.apellidos || ""}`)
-        const rut = normalize(c.rut)
-        return nombre.includes(q) || rut.includes(q)
-      })
-      .slice(0, 8)
-  }, [clientesActivos, clienteQuery])
+    if (!q) {
+      setClientesBuscados([])
+      return
+    }
 
-  // mejor match (si hay uno claro)
-  const mejorMatch = useMemo(() => {
-    const q = normalize(clienteQuery)
-    if (!q) return null
+    // Si ya seleccionaste a un cliente, no volvemos a buscar
+    if (clienteId) return
 
-    const exactRut = clientesActivos.find((c) => normalize(c.rut) === q)
-    if (exactRut) return exactRut
+    const timer = setTimeout(async () => {
+      setBuscando(true)
+      try {
+        const API = getApiBase()
+        const token = getToken()
+        const res = await fetch(`${API}/api/clientes?search=${encodeURIComponent(q)}`, {
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        })
+        const data = await res.json()
+        if (data?.ok) {
+          // Filtramos solo los ACTIVOS y limitamos visualmente a 8
+          const activos = (data.clientes || []).filter(c => normalize(c.estado) === "activo")
+          setClientesBuscados(activos.slice(0, 8))
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setBuscando(false)
+      }
+    }, 350)
 
-    const exactNombre = clientesActivos.find((c) => {
-      const nombre = normalize(`${c.nombres || ""} ${c.apellidos || ""}`)
-      return nombre === q
-    })
-    if (exactNombre) return exactNombre
+    return () => clearTimeout(timer)
+  }, [clienteQuery, clienteId])
 
-    if (clientesFiltrados.length === 1) return clientesFiltrados[0]
-
-    return null
-  }, [clientesActivos, clientesFiltrados, clienteQuery])
-
-  const clienteSeleccionado = useMemo(() => {
-    return clientes.find((c) => c.id === clienteId) || null
-  }, [clientes, clienteId])
-
+  // Puntos Actuales (usando el objeto buscado o el fallback)
   const puntosActualesNum = useMemo(() => {
-    const fromCliente = Number(clienteSeleccionado?.puntos_total)
+    const fromCliente = Number(clienteObj?.puntos_total)
     if (Number.isFinite(fromCliente)) return fromCliente
 
     const fallback = Number(puntosActuales || 0)
     return Number.isFinite(fallback) ? fallback : 0
-  }, [clienteSeleccionado, puntosActuales])
+  }, [clienteObj, puntosActuales])
 
-  // 🔥 NUEVO: Filtrar cupones válidos (Activos y no vencidos)
+  // 🔥 Filtro de Cupones
   const cuponesDisponibles = useMemo(() => {
     const now = new Date()
     return cupones.filter((c) => {
-      // 1. Debe estar activo
       const estado = String(c.estado || "").toLowerCase()
       if (estado !== "activo") return false
-
-      // 2. Si tiene fecha de vencimiento, no debe haber pasado
       if (c.vence_en) {
         const vence = new Date(c.vence_en)
-        if (!Number.isNaN(vence.getTime()) && vence < now) {
-          return false // Ya venció
-        }
+        if (!Number.isNaN(vence.getTime()) && vence < now) return false
       }
       return true
     })
@@ -193,24 +209,13 @@ export default function NuevoMovimientoModal({
   const selectCliente = (c) => {
     if (!c?.id) return
     setClienteId(c.id)
+    setClienteObj(c)
     const nombre = `${c.nombres || ""} ${c.apellidos || ""}`.trim() || "Sin nombre"
     setClienteQuery(`${nombre} — ${c.rut || ""}`.trim())
     setShowSuggest(false)
     setTouched(true)
     setSubmitError("")
   }
-
-  useEffect(() => {
-    if (!open) return
-    if (clienteId) return
-    if (!mejorMatch) return
-
-    const q = normalize(clienteQuery)
-    if (q.length < 4) return
-
-    selectCliente(mejorMatch)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mejorMatch, open])
 
   const handleSubmit = async () => {
     setTouched(true)
@@ -270,14 +275,13 @@ export default function NuevoMovimientoModal({
                 <p className="text-sm text-muted-foreground">Puntos actuales</p>
                 <div className="text-4xl font-bold leading-none">{puntosActualesNum}</div>
 
-                {clienteSeleccionado && (
+                {clienteObj && (
                   <div className="mt-2 text-xs text-muted-foreground">
                     Cliente:{" "}
                     <span className="font-medium text-foreground">
-                      {`${clienteSeleccionado.nombres || ""} ${clienteSeleccionado.apellidos || ""}`.trim() ||
-                        "Sin nombre"}
+                      {`${clienteObj.nombres || ""} ${clienteObj.apellidos || ""}`.trim() || "Sin nombre"}
                     </span>{" "}
-                    · {clienteSeleccionado.rut}
+                    · {clienteObj.rut}
                   </div>
                 )}
               </div>
@@ -334,60 +338,45 @@ export default function NuevoMovimientoModal({
                   setTouched(true)
                   setSubmitError("")
                   setShowSuggest(true)
-                  if (clienteId) setClienteId("")
+                  if (clienteId) {
+                    setClienteId("")
+                    setClienteObj(null)
+                  }
                 }}
                 onFocus={() => {
                   if (normalize(clienteQuery)) setShowSuggest(true)
                 }}
                 onBlur={() => {
-                  setTimeout(() => setShowSuggest(false), 120)
+                  setTimeout(() => setShowSuggest(false), 200)
                 }}
                 placeholder="Escribe RUT o nombre..."
                 className="mt-2 w-full px-3 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               />
 
-              {!clienteId && mejorMatch && (
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => selectCliente(mejorMatch)}
-                  className="mt-2 w-full text-left px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted/60 transition-colors"
-                >
-                  <div className="text-sm font-medium">
-                    Coincidencia:{" "}
-                    {`${mejorMatch.nombres || ""} ${mejorMatch.apellidos || ""}`.trim() || "Sin nombre"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{mejorMatch.rut}</div>
-                </button>
-              )}
-
-              {showSuggest && !clienteId && clientesFiltrados.length > 1 && (
+              {/* ✅ Dropdown con resultados de la BD */}
+              {showSuggest && !clienteId && (
                 <div className="absolute z-10 mt-2 w-full rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-                  {clientesFiltrados.map((c) => {
-                    const nombre = `${c.nombres || ""} ${c.apellidos || ""}`.trim() || "Sin nombre"
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => selectCliente(c)}
-                        className="w-full text-left px-3 py-2 hover:bg-muted/60 transition-colors"
-                      >
-                        <div className="text-sm font-medium">{nombre}</div>
-                        <div className="text-xs text-muted-foreground">{c.rut}</div>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-
-              {clienteId && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Seleccionado:{" "}
-                  <span className="font-medium text-foreground">
-                    {`${clienteSeleccionado?.nombres || ""} ${clienteSeleccionado?.apellidos || ""}`.trim() ||
-                      "Sin nombre"}
-                  </span>
+                  {buscando ? (
+                    <div className="p-3 text-sm text-muted-foreground animate-pulse">Buscando...</div>
+                  ) : clientesBuscados.length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground">Sin coincidencias...</div>
+                  ) : (
+                    clientesBuscados.map((c) => {
+                      const nombre = `${c.nombres || ""} ${c.apellidos || ""}`.trim() || "Sin nombre"
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectCliente(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-muted/60 transition-colors"
+                        >
+                          <div className="text-sm font-medium">{nombre}</div>
+                          <div className="text-xs text-muted-foreground">{c.rut}</div>
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
               )}
             </div>
@@ -449,7 +438,6 @@ export default function NuevoMovimientoModal({
                   className="mt-2 w-full px-3 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Selecciona un cupón</option>
-                  {/* 🔥 AQUI USAMOS EL FILTRADO */}
                   {cuponesDisponibles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.codigo} — {c.tipo_descuento} ({c.valor}) — costo {c.costo_puntos} pts
