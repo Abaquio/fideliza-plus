@@ -15,7 +15,54 @@ import {
   validarYNormalizarTelefono
 } from "../utils/validaciones"
 
+// ✅ Configuración de la URL de tu API
+function getApiBase() {
+  const fromEnv = import.meta?.env?.VITE_API_URL
+  if (fromEnv) return String(fromEnv).replace(/\/$/, "")
+  const host = window.location.hostname
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
+  return "https://fideliza-plus.onrender.com"
+}
+
+// ✅ NUEVO MOTOR DE COMPRESIÓN DE IMÁGENES EN EL FRONTEND
+const compressImageToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 800; // Ancho máximo para que no pese casi nada
+        
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Comprimimos a JPEG con 70% de calidad
+        const base64String = canvas.toDataURL("image/jpeg", 0.7);
+        resolve(base64String);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 export default function BordadoPublico() {
+  const API_URL = getApiBase()
+
   const [step, setStep] = useState("form")
   const [loading, setLoading] = useState(false)
   const [generalError, setGeneralError] = useState("")
@@ -34,7 +81,6 @@ export default function BordadoPublico() {
     especificaciones: ""
   })
 
-  // ✅ Estado para el archivo logo (cuando seleccionan "Otro")
   const [logoFile, setLogoFile] = useState(null)
 
   const [errors, setErrors] = useState({
@@ -58,7 +104,6 @@ export default function BordadoPublico() {
     let finalValue = value
     let errorMsg = ""
 
-    // --- Lógica de Input Mask y Validación en Tiempo Real ---
     if (name === "contacto_rut") {
       finalValue = normalizarRut(value)
       if (finalValue.length > 7 && !validarRut(finalValue)) {
@@ -88,7 +133,6 @@ export default function BordadoPublico() {
     setErrors(prev => ({ ...prev, [name]: errorMsg }))
     setGeneralError("")
 
-    // Si cambian el modelo y ya no es "otro", limpiamos el error del archivo
     if (name === "modelo_bordado" && value !== "otro") {
       setErrors(prev => ({ ...prev, logoFile: "" }))
       setLogoFile(null)
@@ -120,11 +164,9 @@ export default function BordadoPublico() {
     e.preventDefault()
     setGeneralError("")
 
-    // ✅ VALIDACIONES BLOQUEANTES DE ENVÍO
     const newErrors = { ...errors }
     let hasError = false
 
-    // 1. Validar Contacto
     if (!validarRut(form.contacto_rut)) { newErrors.contacto_rut = "RUT inválido"; hasError = true; }
     if (form.contacto_nombre.trim().length < 2) { newErrors.contacto_nombre = "Requerido"; hasError = true; }
     if (form.contacto_apellido.trim().length < 2) { newErrors.contacto_apellido = "Requerido"; hasError = true; }
@@ -133,19 +175,16 @@ export default function BordadoPublico() {
     const telCheck = validarYNormalizarTelefono(form.contacto_telefono)
     if (!telCheck.valido) { newErrors.contacto_telefono = "Teléfono inválido"; hasError = true; }
 
-    // 2. Validar Modelo
     if (!form.modelo_bordado) {
       newErrors.modelo_bordado = "Debes seleccionar un modelo"
       hasError = true
     }
 
-    // 3. Validar Datos de Bordado
     if (form.bordado_nombre.trim().length < 2) { newErrors.bordado_nombre = "Requerido"; hasError = true; }
     if (form.bordado_apellido.trim().length < 2) { newErrors.bordado_apellido = "Requerido"; hasError = true; }
     if (form.bordado_profesion.trim().length < 2) { newErrors.bordado_profesion = "Requerido"; hasError = true; }
     if (form.bordado_universidad.trim().length < 2) { newErrors.bordado_universidad = "Requerido"; hasError = true; }
 
-    // 4. Validar Archivo (si aplica)
     if (form.modelo_bordado === "otro" && !logoFile) {
       newErrors.logoFile = "Debes adjuntar tu logo"
       hasError = true
@@ -166,20 +205,53 @@ export default function BordadoPublico() {
     setLoading(true)
 
     try {
-      // 🚀 AQUÍ IRÁ EL LLAMADO AL BACKEND PARA ENVIAR CORREOS
-      // Simulamos carga por ahora
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
+      // ✅ Si hay logo, lo comprimimos a Base64 antes de enviarlo
+      let logoBase64 = null;
+      if (form.modelo_bordado === "otro" && logoFile) {
+        try {
+          logoBase64 = await compressImageToBase64(logoFile);
+        } catch (error) {
+          throw new Error("Hubo un problema procesando tu imagen. Intenta con otra foto.");
+        }
+      }
+
+      const payload = {
+        contacto_nombre: form.contacto_nombre.trim(),
+        contacto_apellido: form.contacto_apellido.trim(),
+        contacto_rut: form.contacto_rut,
+        contacto_telefono: telCheck.valor,
+        contacto_correo: form.contacto_correo.trim(),
+        modelo_bordado: form.modelo_bordado,
+        bordado_nombre: form.bordado_nombre.trim(),
+        bordado_apellido: form.bordado_apellido.trim(),
+        bordado_profesion: form.bordado_profesion.trim(),
+        bordado_universidad: form.bordado_universidad.trim(),
+        especificaciones: form.especificaciones.trim(),
+        // ✅ Se añade la imagen comprimida al envío
+        logo_base64: logoBase64 
+      }
+
+      const res = await fetch(`${API_URL}/api/public/bordado`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.message || "Error al enviar la solicitud")
+      }
+
       setStep("success")
 
     } catch (err) {
-      setGeneralError(err.message || "Error al enviar la solicitud")
+      setGeneralError(err.message || "Error al comunicarse con el servidor")
     } finally {
       setLoading(false)
     }
   }
 
-  // ✅ VISTA DE ÉXITO (Mismo estilo que RegistroPublico)
   if (step === "success") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/20 to-accent/10 flex items-center justify-center p-4 animate-fade-in">
@@ -206,7 +278,6 @@ export default function BordadoPublico() {
     )
   }
 
-  // ✅ FUNCIÓN DE CLASES PARA INPUTS (Directo de RegistroPublico)
   const getInputClass = (hasError) => 
     `w-full px-4 py-3 bg-muted/50 border rounded-xl focus:outline-none focus:ring-2 transition-all font-medium ${
       hasError ? "border-red-300 focus:border-red-500 focus:ring-red-200 bg-red-50/30" : "border-border focus:ring-primary/50"
