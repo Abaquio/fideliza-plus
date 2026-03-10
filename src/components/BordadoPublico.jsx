@@ -6,7 +6,6 @@ import {
   Upload, User, Mail, Phone, FileText, GraduationCap, AlignLeft, Image as ImageIcon 
 } from "lucide-react"
 
-// ✅ Importamos tus validaciones
 import {
   normalizarRut, 
   validarRut,
@@ -15,7 +14,6 @@ import {
   validarYNormalizarTelefono
 } from "../utils/validaciones"
 
-// ✅ Configuración de la URL de tu API
 function getApiBase() {
   const fromEnv = import.meta?.env?.VITE_API_URL
   if (fromEnv) return String(fromEnv).replace(/\/$/, "")
@@ -24,7 +22,6 @@ function getApiBase() {
   return "https://fideliza-plus.onrender.com"
 }
 
-// ✅ NUEVO MOTOR DE COMPRESIÓN DE IMÁGENES EN EL FRONTEND
 const compressImageToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -34,7 +31,7 @@ const compressImageToBase64 = (file) => {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 800; // Ancho máximo para que no pese casi nada
+        const MAX_WIDTH = 800; 
         
         let width = img.width;
         let height = img.height;
@@ -50,7 +47,6 @@ const compressImageToBase64 = (file) => {
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Comprimimos a JPEG con 70% de calidad
         const base64String = canvas.toDataURL("image/jpeg", 0.7);
         resolve(base64String);
       };
@@ -68,6 +64,7 @@ export default function BordadoPublico() {
   const [generalError, setGeneralError] = useState("")
 
   const [form, setForm] = useState({
+    contacto_folio: "", // ✅ NUEVO CAMPO
     contacto_nombre: "",
     contacto_apellido: "",
     contacto_rut: "",
@@ -84,6 +81,7 @@ export default function BordadoPublico() {
   const [logoFile, setLogoFile] = useState(null)
 
   const [errors, setErrors] = useState({
+    contacto_folio: "", // ✅ NUEVO ERROR
     contacto_nombre: "",
     contacto_apellido: "",
     contacto_rut: "",
@@ -104,7 +102,11 @@ export default function BordadoPublico() {
     let finalValue = value
     let errorMsg = ""
 
-    if (name === "contacto_rut") {
+    // ✅ Filtro para N° Folio (Solo números)
+    if (name === "contacto_folio") {
+      finalValue = value.replace(/\D/g, "")
+    }
+    else if (name === "contacto_rut") {
       finalValue = normalizarRut(value)
       if (finalValue.length > 7 && !validarRut(finalValue)) {
         errorMsg = "RUT inválido"
@@ -150,7 +152,6 @@ export default function BordadoPublico() {
     const file = e.target.files[0]
     setGeneralError("")
     if (file) {
-      // ✅ Subimos el límite de validación a 10MB
       if (file.size > 10 * 1024 * 1024) {
         setErrors(prev => ({ ...prev, logoFile: "El archivo es demasiado grande (Máx 10MB)" }))
         setLogoFile(null)
@@ -168,6 +169,8 @@ export default function BordadoPublico() {
     const newErrors = { ...errors }
     let hasError = false
 
+    // ✅ Validación de Folio requerido
+    if (!form.contacto_folio.trim()) { newErrors.contacto_folio = "Requerido"; hasError = true; }
     if (!validarRut(form.contacto_rut)) { newErrors.contacto_rut = "RUT inválido"; hasError = true; }
     if (form.contacto_nombre.trim().length < 2) { newErrors.contacto_nombre = "Requerido"; hasError = true; }
     if (form.contacto_apellido.trim().length < 2) { newErrors.contacto_apellido = "Requerido"; hasError = true; }
@@ -206,7 +209,6 @@ export default function BordadoPublico() {
     setLoading(true)
 
     try {
-      // ✅ Si hay logo, lo comprimimos a Base64 antes de enviarlo
       let logoBase64 = null;
       if (form.modelo_bordado === "otro" && logoFile) {
         try {
@@ -217,6 +219,7 @@ export default function BordadoPublico() {
       }
 
       const payload = {
+        contacto_folio: form.contacto_folio.trim(), // ✅ SE ENVÍA AL BACKEND
         contacto_nombre: form.contacto_nombre.trim(),
         contacto_apellido: form.contacto_apellido.trim(),
         contacto_rut: form.contacto_rut,
@@ -228,7 +231,6 @@ export default function BordadoPublico() {
         bordado_profesion: form.bordado_profesion.trim(),
         bordado_universidad: form.bordado_universidad.trim(),
         especificaciones: form.especificaciones.trim(),
-        // ✅ Se añade la imagen comprimida al envío
         logo_base64: logoBase64 
       }
 
@@ -290,7 +292,6 @@ export default function BordadoPublico() {
       
       <div className="w-full max-w-3xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-10 animate-scale-in">
         
-        {/* ENCABEZADO */}
         <div className="bg-gradient-to-b from-primary/5 to-transparent p-6 text-center border-b border-border">
           <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-3 shadow-lg shadow-primary/20">
             MS
@@ -314,6 +315,20 @@ export default function BordadoPublico() {
               <User className="w-5 h-5 text-primary" /> 1. Tus Datos de Contacto
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              {/* ✅ NUEVO CAMPO FOLIO Y RUT EN LA PRIMERA FILA */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">N° Folio</label>
+                <input name="contacto_folio" type="text" inputMode="numeric" value={form.contacto_folio} onChange={handleChange} className={getInputClass(!!errors.contacto_folio)} placeholder="Ej: 12345" />
+                {errors.contacto_folio && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_folio}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">RUT</label>
+                <input name="contacto_rut" value={form.contacto_rut} onChange={handleChange} maxLength={12} className={getInputClass(!!errors.contacto_rut)} placeholder="12345678-9" />
+                {errors.contacto_rut && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_rut}</p>}
+              </div>
+
+              {/* ✅ NOMBRE Y APELLIDO EN LA SEGUNDA FILA */}
               <div>
                 <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre</label>
                 <input name="contacto_nombre" value={form.contacto_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.contacto_nombre)} placeholder="Juan" />
@@ -324,21 +339,19 @@ export default function BordadoPublico() {
                 <input name="contacto_apellido" value={form.contacto_apellido} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.contacto_apellido)} placeholder="Pérez" />
                 {errors.contacto_apellido && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_apellido}</p>}
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">RUT</label>
-                <input name="contacto_rut" value={form.contacto_rut} onChange={handleChange} maxLength={12} className={getInputClass(!!errors.contacto_rut)} placeholder="12345678-9" />
-                {errors.contacto_rut && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_rut}</p>}
-              </div>
+
+              {/* ✅ TELÉFONO Y CORREO EN LA TERCERA FILA */}
               <div>
                 <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80 flex items-center gap-1">Teléfono</label>
                 <input name="contacto_telefono" type="tel" value={form.contacto_telefono} onChange={handleChange} onFocus={() => { if (!form.contacto_telefono) setForm(prev => ({...prev, contacto_telefono: "+56"})) }} className={getInputClass(!!errors.contacto_telefono)} placeholder="+56 9 ..." />
                 {errors.contacto_telefono && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_telefono}</p>}
               </div>
-              <div className="sm:col-span-2">
+              <div>
                 <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80 flex items-center gap-1">Correo Electrónico</label>
                 <input name="contacto_correo" type="email" value={form.contacto_correo} onChange={handleChange} className={getInputClass(!!errors.contacto_correo)} placeholder="hola@ejemplo.com" />
                 {errors.contacto_correo && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_correo}</p>}
               </div>
+
             </div>
           </section>
 
@@ -407,7 +420,6 @@ export default function BordadoPublico() {
               <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-2">
                 <Upload className="w-5 h-5 text-primary" /> 4. Adjunta tu Logo
               </h2>
-              {/* ✅ Texto actualizado para que el cliente sepa que puede subir hasta 10MB */}
               <p className="text-sm text-muted-foreground mb-4">Requerido en formato PNG o JPG (hasta 10MB. Se comprimirá automáticamente).</p>
               
               <div className="flex items-center justify-center w-full">
@@ -422,7 +434,6 @@ export default function BordadoPublico() {
                       <>
                         <Upload className="w-8 h-8 mb-3 text-primary/60" />
                         <p className="mb-1 text-sm text-foreground/80"><span className="font-semibold text-primary">Haz clic para subir</span> o arrastra</p>
-                        {/* ✅ Texto actualizado en la caja */}
                         <p className="text-xs text-muted-foreground">PNG, JPG (MAX. 10MB)</p>
                       </>
                     )}
