@@ -15,8 +15,9 @@ import PerfilFull from "./components/PerfilFull"
 import Configuracion from "./components/Configuracion"
 import Login from "./components/Login"
 
-// ✅ NUEVO: Importamos el componente de registro público
+// ✅ Componentes Públicos
 import RegistroPublico from "./components/RegistroPublico"
+import BordadoPublico from "./components/BordadoPublico" // <-- NUEVO IMPORT
 
 const PATH_TO_VIEW = {
   "/dashboard": "dashboard",
@@ -162,8 +163,9 @@ export default function App() {
   const routes = useMemo(
     () => (
       <Routes>
-        {/* ✅ Ruta Pública: Registro QR (Sin protección ni layout) */}
+        {/* ✅ Rutas Públicas: Sin protección ni layout */}
         <Route path="/unete" element={<RegistroPublico />} />
+        <Route path="/bordados" element={<BordadoPublico />} />
 
         <Route path="/login" element={isAuthed ? <Navigate to="/dashboard" replace /> : <Login onLogin={handleLogin} />} />
         <Route path="/" element={<Navigate to={isAuthed ? "/dashboard" : "/login"} replace />} />
