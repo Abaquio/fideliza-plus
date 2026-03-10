@@ -3,6 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { X, Search, Calendar } from "lucide-react"
 
+// ✅ Helpers para hacer fetch en tiempo real
+function getApiBase() {
+  const fromEnv = import.meta?.env?.VITE_API_URL
+  if (fromEnv) return String(fromEnv).replace(/\/$/, "")
+  const host = window.location.hostname
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
+  return "https://fideliza-plus.onrender.com"
+}
+
+function getToken() {
+  const directKeys = ["token", "access_token", "auth_token", "jwt", "session_token"]
+  for (const k of directKeys) {
+    const v = sessionStorage.getItem(k) || localStorage.getItem(k)
+    if (v) return v
+  }
+  return ""
+}
+
 function formatCLP(n) {
   const num = Number(n || 0)
   return num.toLocaleString("es-CL", { style: "currency", currency: "CLP" })
@@ -35,7 +53,7 @@ export default function RegistrarCompraModal({
   open,
   onClose,
   onSubmit,
-  clientes = [],
+  clientes = [], // Lo mantenemos por compatibilidad del componente padre
   sucursales = [],
   config,
 }) {
@@ -43,7 +61,12 @@ export default function RegistrarCompraModal({
 
   const [clienteQuery, setClienteQuery] = useState("")
   const [clienteId, setClienteId] = useState("")
+  const [clienteObj, setClienteObj] = useState(null) // ✅ Guardamos el cliente completo seleccionado
   const [isFocused, setIsFocused] = useState(false)
+
+  // ✅ Nuevos estados para la búsqueda directa a la base de datos
+  const [clientesBuscados, setClientesBuscados] = useState([])
+  const [buscando, setBuscando] = useState(false)
 
   const [monto, setMonto] = useState("")
   const [estado, setEstado] = useState("vigente")
@@ -56,6 +79,8 @@ export default function RegistrarCompraModal({
   useEffect(() => {
     setClienteQuery("")
     setClienteId("")
+    setClienteObj(null)
+    setClientesBuscados([])
     setIsFocused(false)
 
     setMonto("")
@@ -65,24 +90,45 @@ export default function RegistrarCompraModal({
     setSucursalId("")
   }, [open])
 
-  const clientesFiltrados = useMemo(() => {
+  // ✅ EFECTO MAGICO: Busca en la base de datos a medida que escribes
+  useEffect(() => {
     const q = safeLower(clienteQuery.trim())
-    if (!q) return []
-    // limita a 30 para que sea rápido
-    return clientes
-      .filter((c) => {
-        const full = `${c.nombres || ""} ${c.apellidos || ""}`.trim()
-        return safeLower(full).includes(q) || safeLower(c.rut).includes(q)
-      })
-      .slice(0, 30)
-  }, [clientes, clienteQuery])
+    if (!q) {
+      setClientesBuscados([])
+      return
+    }
 
-  const showDropdown = isFocused && clienteQuery.trim().length > 0
+    // Si ya seleccionaste a un cliente, no volvemos a buscar a la BD
+    if (clienteId) return
 
-  const clienteSeleccionado = useMemo(
-    () => clientes.find((c) => c.id === clienteId) || null,
-    [clientes, clienteId]
-  )
+    const timer = setTimeout(async () => {
+      setBuscando(true)
+      try {
+        const API = getApiBase()
+        const token = getToken()
+        const res = await fetch(`${API}/api/clientes?search=${encodeURIComponent(q)}`, {
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        })
+        const data = await res.json()
+        if (data?.ok) {
+           // Limitamos a 30 visualmente en el dropdown para no alargar la pantalla
+           setClientesBuscados(data.clientes.slice(0, 30) || [])
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setBuscando(false)
+      }
+    }, 350)
+
+    return () => clearTimeout(timer)
+  }, [clienteQuery, clienteId])
+
+  // Solo mostrar el dropdown si está enfocado, hay texto y aún no ha seleccionado a nadie
+  const showDropdown = isFocused && clienteQuery.trim().length > 0 && !clienteId
 
   const puntos = useMemo(() => calcularPuntos(monto, config), [monto, config])
 
@@ -94,6 +140,7 @@ export default function RegistrarCompraModal({
 
   const handlePickCliente = (c) => {
     setClienteId(c.id)
+    setClienteObj(c)
     setClienteQuery(`${(c.nombres || "").trim()} ${(c.apellidos || "").trim()} (${c.rut})`.trim())
     setIsFocused(false)
   }
@@ -150,6 +197,7 @@ export default function RegistrarCompraModal({
                 onChange={(e) => {
                   setClienteQuery(e.target.value)
                   setClienteId("") // si editas texto, de-selecciona
+                  setClienteObj(null)
                 }}
                 onFocus={() => {
                   if (blurTimer.current) clearTimeout(blurTimer.current)
@@ -167,11 +215,13 @@ export default function RegistrarCompraModal({
             {/* dropdown SOLO cuando escribes */}
             {showDropdown && (
               <div className="mt-2 border border-border rounded-lg overflow-hidden bg-card absolute w-full z-10 shadow-lg">
-                {clientesFiltrados.length === 0 ? (
+                {buscando ? (
+                  <div className="p-3 text-sm text-muted-foreground animate-pulse">Buscando en la base de datos...</div>
+                ) : clientesBuscados.length === 0 ? (
                   <div className="p-3 text-sm text-muted-foreground">Sin coincidencias…</div>
                 ) : (
                   <div className="max-h-56 overflow-y-auto">
-                    {clientesFiltrados.map((c) => {
+                    {clientesBuscados.map((c) => {
                       const full = `${c.nombres || ""} ${c.apellidos || ""}`.trim()
                       return (
                         <button
@@ -193,9 +243,9 @@ export default function RegistrarCompraModal({
               </div>
             )}
 
-            {clienteSeleccionado && (
+            {clienteObj && (
               <p className="text-xs text-muted-foreground mt-2">
-                Seleccionado: <span className="font-medium">{clienteSeleccionado.rut}</span>
+                Seleccionado: <span className="font-medium">{clienteObj.rut}</span>
               </p>
             )}
           </div>
