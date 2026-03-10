@@ -1,78 +1,271 @@
 "use client"
 
 import { useState } from "react"
-import { Upload, User, Mail, Phone, FileText, CheckCircle, GraduationCap, AlignLeft, Image as ImageIcon } from "lucide-react"
+import { 
+  CheckCircle, Loader2, AlertTriangle, AlertCircle, 
+  Upload, User, Mail, Phone, FileText, GraduationCap, AlignLeft, Image as ImageIcon 
+} from "lucide-react"
+
+// ✅ Importamos tus validaciones
+import {
+  normalizarRut, 
+  validarRut,
+  limpiarNombreLive,
+  validarEmail,
+  validarYNormalizarTelefono
+} from "../utils/validaciones"
 
 export default function BordadoPublico() {
-  const [formData, setFormData] = useState({
+  const [step, setStep] = useState("form")
+  const [loading, setLoading] = useState(false)
+  const [generalError, setGeneralError] = useState("")
+
+  const [form, setForm] = useState({
     contacto_nombre: "",
     contacto_apellido: "",
     contacto_rut: "",
     contacto_telefono: "+56 ",
     contacto_correo: "",
-    modelo_bordado: "", // uss_obstetricia, uss_odontologia, u_austral, otro
+    modelo_bordado: "", 
     bordado_nombre: "",
     bordado_apellido: "",
     bordado_profesion: "",
     bordado_universidad: "",
-    especificaciones: "",
-    acepta_terminos: false
+    especificaciones: ""
   })
 
+  // ✅ Estado para el archivo logo (cuando seleccionan "Otro")
+  const [logoFile, setLogoFile] = useState(null)
+
+  const [errors, setErrors] = useState({
+    contacto_nombre: "",
+    contacto_apellido: "",
+    contacto_rut: "",
+    contacto_telefono: "",
+    contacto_correo: "",
+    modelo_bordado: "",
+    bordado_nombre: "",
+    bordado_apellido: "",
+    bordado_profesion: "",
+    bordado_universidad: "",
+    logoFile: ""
+  })
+
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value
-    }))
+    const { name, value } = e.target
+    let finalValue = value
+    let errorMsg = ""
+
+    // --- Lógica de Input Mask y Validación en Tiempo Real ---
+    if (name === "contacto_rut") {
+      finalValue = normalizarRut(value)
+      if (finalValue.length > 7 && !validarRut(finalValue)) {
+        errorMsg = "RUT inválido"
+      }
+    } 
+    else if (name.includes("nombre") || name.includes("apellido") || name === "bordado_profesion" || name === "bordado_universidad") {
+      finalValue = limpiarNombreLive(value)
+      if (finalValue.length > 0 && finalValue.trim().length < 2) {
+        errorMsg = "Mínimo 2 letras"
+      }
+    }
+    else if (name === "contacto_correo") {
+      if (value.length > 0 && !validarEmail(value)) {
+        errorMsg = "Email inválido"
+      }
+    }
+    else if (name === "contacto_telefono") {
+      finalValue = value.replace(/[^0-9+\s]/g, "")
+      if (finalValue.length > 4) {
+         const { valido } = validarYNormalizarTelefono(finalValue)
+         if (!valido) errorMsg = "Mínimo 8 dígitos"
+      }
+    }
+
+    setForm(prev => ({ ...prev, [name]: finalValue }))
+    setErrors(prev => ({ ...prev, [name]: errorMsg }))
+    setGeneralError("")
+
+    // Si cambian el modelo y ya no es "otro", limpiamos el error del archivo
+    if (name === "modelo_bordado" && value !== "otro") {
+      setErrors(prev => ({ ...prev, logoFile: "" }))
+      setLogoFile(null)
+    }
   }
 
-  // Clase reutilizable para inputs
-  const inputClass = "w-full px-4 py-3 bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium text-foreground"
+  const handleBlur = (e) => {
+    const { name, value } = e.target
+    if (name.includes("nombre") || name.includes("apellido") || name === "bordado_profesion" || name === "bordado_universidad") {
+      setForm(prev => ({ ...prev, [name]: value.trim().replace(/\s+/g, " ") }))
+    }
+  }
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    setGeneralError("")
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, logoFile: "El archivo pesa más de 2MB" }))
+        setLogoFile(null)
+      } else {
+        setErrors(prev => ({ ...prev, logoFile: "" }))
+        setLogoFile(file)
+      }
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setGeneralError("")
+
+    // ✅ VALIDACIONES BLOQUEANTES DE ENVÍO
+    const newErrors = { ...errors }
+    let hasError = false
+
+    // 1. Validar Contacto
+    if (!validarRut(form.contacto_rut)) { newErrors.contacto_rut = "RUT inválido"; hasError = true; }
+    if (form.contacto_nombre.trim().length < 2) { newErrors.contacto_nombre = "Requerido"; hasError = true; }
+    if (form.contacto_apellido.trim().length < 2) { newErrors.contacto_apellido = "Requerido"; hasError = true; }
+    if (!validarEmail(form.contacto_correo)) { newErrors.contacto_correo = "Email inválido"; hasError = true; }
+    
+    const telCheck = validarYNormalizarTelefono(form.contacto_telefono)
+    if (!telCheck.valido) { newErrors.contacto_telefono = "Teléfono inválido"; hasError = true; }
+
+    // 2. Validar Modelo
+    if (!form.modelo_bordado) {
+      newErrors.modelo_bordado = "Debes seleccionar un modelo"
+      hasError = true
+    }
+
+    // 3. Validar Datos de Bordado
+    if (form.bordado_nombre.trim().length < 2) { newErrors.bordado_nombre = "Requerido"; hasError = true; }
+    if (form.bordado_apellido.trim().length < 2) { newErrors.bordado_apellido = "Requerido"; hasError = true; }
+    if (form.bordado_profesion.trim().length < 2) { newErrors.bordado_profesion = "Requerido"; hasError = true; }
+    if (form.bordado_universidad.trim().length < 2) { newErrors.bordado_universidad = "Requerido"; hasError = true; }
+
+    // 4. Validar Archivo (si aplica)
+    if (form.modelo_bordado === "otro" && !logoFile) {
+      newErrors.logoFile = "Debes adjuntar tu logo"
+      hasError = true
+    }
+
+    setErrors(newErrors)
+
+    if (hasError) {
+      setGeneralError("Por favor corrige los errores marcados en rojo.")
+      return
+    }
+
+    if (!acceptedTerms) {
+      setGeneralError("Debes aceptar la declaración antes de enviar.")
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      // 🚀 AQUÍ IRÁ EL LLAMADO AL BACKEND PARA ENVIAR CORREOS
+      // Simulamos carga por ahora
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      setStep("success")
+
+    } catch (err) {
+      setGeneralError(err.message || "Error al enviar la solicitud")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ✅ VISTA DE ÉXITO (Mismo estilo que RegistroPublico)
+  if (step === "success") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary/20 to-accent/10 flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-card w-full max-w-md rounded-2xl shadow-xl p-8 text-center border border-border animate-scale-in">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <CheckCircle className="w-10 h-10 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">¡Solicitud Enviada!</h1>
+          <p className="text-muted-foreground mb-6 leading-relaxed">
+            Hemos recibido tus datos para el bordado. Te enviamos una copia a tu correo.
+          </p>
+          
+          <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 mb-6">
+            <p className="text-sm font-medium text-primary flex items-center justify-center gap-2">
+              <FileText className="w-4 h-4" /> Medical Season
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Nos pondremos en contacto contigo a la brevedad.
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground">Puedes cerrar esta ventana.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ✅ FUNCIÓN DE CLASES PARA INPUTS (Directo de RegistroPublico)
+  const getInputClass = (hasError) => 
+    `w-full px-4 py-3 bg-muted/50 border rounded-xl focus:outline-none focus:ring-2 transition-all font-medium ${
+      hasError ? "border-red-300 focus:border-red-500 focus:ring-red-200 bg-red-50/30" : "border-border focus:ring-primary/50"
+    }`
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center py-8 px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-10">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center py-8 px-4 relative overflow-hidden animate-fade-in">
+      <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none" />
+      
+      <div className="w-full max-w-3xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-10 animate-scale-in">
         
-        {/* Encabezado */}
-        <div className="bg-gradient-to-br from-primary/10 to-primary/5 p-8 text-center border-b border-border">
-          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">Medical Season</h1>
-          <p className="text-sm text-muted-foreground mt-2 font-medium uppercase tracking-wider">
-            Bordado Clínico e Industrial
-          </p>
+        {/* ENCABEZADO */}
+        <div className="bg-gradient-to-b from-primary/5 to-transparent p-6 text-center border-b border-border">
+          <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-3 shadow-lg shadow-primary/20">
+            MS
+          </div>
+          <h1 className="text-2xl font-bold text-foreground">Bordado Clínico</h1>
+          <p className="text-sm text-muted-foreground">Completa los datos para iniciar tu pedido</p>
         </div>
 
-        <form className="p-6 sm:p-8 space-y-10" onSubmit={(e) => e.preventDefault()}>
+        <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-8">
           
+          {generalError && (
+            <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl text-sm flex items-start gap-3 animate-pulse">
+              <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+              <span className="font-medium">{generalError}</span>
+            </div>
+          )}
+
           {/* 1. DATOS DE CONTACTO */}
           <section>
             <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-4 border-b border-border pb-2">
-              <User className="w-5 h-5 text-primary" /> Datos de Contacto
+              <User className="w-5 h-5 text-primary" /> 1. Tus Datos de Contacto
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase">Nombre</label>
-                <input name="contacto_nombre" value={formData.contacto_nombre} onChange={handleChange} className={inputClass} placeholder="Ej: Juan" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre</label>
+                <input name="contacto_nombre" value={form.contacto_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.contacto_nombre)} placeholder="Juan" />
+                {errors.contacto_nombre && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_nombre}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase">Apellido</label>
-                <input name="contacto_apellido" value={formData.contacto_apellido} onChange={handleChange} className={inputClass} placeholder="Ej: Pérez" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Apellido</label>
+                <input name="contacto_apellido" value={form.contacto_apellido} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.contacto_apellido)} placeholder="Pérez" />
+                {errors.contacto_apellido && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_apellido}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase">RUT</label>
-                <input name="contacto_rut" value={formData.contacto_rut} onChange={handleChange} className={inputClass} placeholder="12.345.678-9" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">RUT</label>
+                <input name="contacto_rut" value={form.contacto_rut} onChange={handleChange} maxLength={12} className={getInputClass(!!errors.contacto_rut)} placeholder="12345678-9" />
+                {errors.contacto_rut && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_rut}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase flex items-center gap-1">
-                  <Phone className="w-3 h-3"/> Teléfono
-                </label>
-                <input name="contacto_telefono" value={formData.contacto_telefono} onChange={handleChange} className={inputClass} />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80 flex items-center gap-1">Teléfono</label>
+                <input name="contacto_telefono" type="tel" value={form.contacto_telefono} onChange={handleChange} onFocus={() => { if (!form.contacto_telefono) setForm(prev => ({...prev, contacto_telefono: "+56"})) }} className={getInputClass(!!errors.contacto_telefono)} placeholder="+56 9 ..." />
+                {errors.contacto_telefono && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_telefono}</p>}
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase flex items-center gap-1">
-                  <Mail className="w-3 h-3"/> Correo Electrónico
-                </label>
-                <input type="email" name="contacto_correo" value={formData.contacto_correo} onChange={handleChange} className={inputClass} placeholder="hola@ejemplo.com" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80 flex items-center gap-1">Correo Electrónico</label>
+                <input name="contacto_correo" type="email" value={form.contacto_correo} onChange={handleChange} className={getInputClass(!!errors.contacto_correo)} placeholder="hola@ejemplo.com" />
+                {errors.contacto_correo && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_correo}</p>}
               </div>
             </div>
           </section>
@@ -80,9 +273,9 @@ export default function BordadoPublico() {
           {/* 2. MODELO TIPO DE BORDADO */}
           <section>
             <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-4 border-b border-border pb-2">
-              <ImageIcon className="w-5 h-5 text-primary" /> 1. Tipo de Bordado Universitario
+              <ImageIcon className="w-5 h-5 text-primary" /> 2. Tipo de Bordado Universitario
             </h2>
-            <p className="text-sm text-muted-foreground mb-4">Selecciona el diseño base para tu uniforme:</p>
+            {errors.modelo_bordado && <p className="text-sm text-red-500 mb-3 font-medium flex items-center gap-1"><AlertCircle className="w-4 h-4"/> {errors.modelo_bordado}</p>}
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
@@ -94,22 +287,14 @@ export default function BordadoPublico() {
                 <label 
                   key={opcion.id} 
                   className={`relative flex flex-col items-center justify-center p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                    formData.modelo_bordado === opcion.id 
+                    form.modelo_bordado === opcion.id 
                       ? "border-primary ring-2 ring-primary/20 shadow-md scale-[1.02]" 
                       : `${opcion.color} hover:shadow-sm grayscale-[0.5]`
                   }`}
                 >
-                  <input 
-                    type="radio" 
-                    name="modelo_bordado" 
-                    value={opcion.id} 
-                    onChange={handleChange} 
-                    className="sr-only" 
-                  />
-                  {formData.modelo_bordado === opcion.id && (
-                    <CheckCircle className="absolute top-2 right-2 w-4 h-4 text-primary" />
-                  )}
-                  <span className="text-xs font-bold text-center mt-1">{opcion.label}</span>
+                  <input type="radio" name="modelo_bordado" value={opcion.id} onChange={handleChange} className="sr-only" />
+                  {form.modelo_bordado === opcion.id && <CheckCircle className="absolute top-2 right-2 w-4 h-4 text-primary" />}
+                  <span className="text-xs font-bold text-center mt-1 text-foreground/90">{opcion.label}</span>
                 </label>
               ))}
             </div>
@@ -118,86 +303,98 @@ export default function BordadoPublico() {
           {/* 3. DATOS PARA TU BORDADO */}
           <section>
             <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-4 border-b border-border pb-2">
-              <GraduationCap className="w-5 h-5 text-primary" /> 2. Datos para tu Bordado
+              <GraduationCap className="w-5 h-5 text-primary" /> 3. Datos para el Bordado
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase">Nombre</label>
-                <input name="bordado_nombre" value={formData.bordado_nombre} onChange={handleChange} className={inputClass} placeholder="Ej: Nombre 1 + Nombre 2" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre a bordar</label>
+                <input name="bordado_nombre" value={form.bordado_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_nombre)} placeholder="Ej: Juan Pablo" />
+                {errors.bordado_nombre && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_nombre}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase">Apellido</label>
-                <input name="bordado_apellido" value={formData.bordado_apellido} onChange={handleChange} className={inputClass} placeholder="Ej: Apellido 1 + Inicial 2" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Apellido a bordar</label>
+                <input name="bordado_apellido" value={form.bordado_apellido} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_apellido)} placeholder="Ej: Pérez M." />
+                {errors.bordado_apellido && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_apellido}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase">Profesión/Carrera</label>
-                <input name="bordado_profesion" value={formData.bordado_profesion} onChange={handleChange} className={inputClass} placeholder="Ej: Enfermería" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Profesión / Carrera</label>
+                <input name="bordado_profesion" value={form.bordado_profesion} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_profesion)} placeholder="Ej: Enfermería" />
+                {errors.bordado_profesion && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_profesion}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1.5 ml-1 text-foreground/80 uppercase">Universidad</label>
-                <input name="bordado_universidad" value={formData.bordado_universidad} onChange={handleChange} className={inputClass} placeholder="Ej: U. San Sebastián" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Universidad</label>
+                <input name="bordado_universidad" value={form.bordado_universidad} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_universidad)} placeholder="Ej: U. San Sebastián" />
+                {errors.bordado_universidad && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_universidad}</p>}
               </div>
             </div>
           </section>
 
-          {/* 4. ADJUNTAR IMAGEN (Solo si es "Otro") */}
-          {formData.modelo_bordado === "otro" && (
-            <section className="animate-fade-in bg-muted/30 p-4 rounded-xl border border-border border-dashed">
+          {/* 4. ADJUNTAR IMAGEN */}
+          {form.modelo_bordado === "otro" && (
+            <section className="animate-fade-in bg-muted/30 p-5 rounded-xl border border-border">
               <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-2">
-                <Upload className="w-5 h-5 text-primary" /> 3. Adjunta tu Logo
+                <Upload className="w-5 h-5 text-primary" /> 4. Adjunta tu Logo
               </h2>
-              <p className="text-xs text-muted-foreground mb-3">Como seleccionaste "N/A", necesitamos tu logo en formato PNG (hasta 2MB).</p>
+              <p className="text-sm text-muted-foreground mb-4">Requerido en formato PNG o JPG (hasta 2MB).</p>
+              
               <div className="flex items-center justify-center w-full">
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-primary/30 border-dashed rounded-lg cursor-pointer bg-primary/5 hover:bg-primary/10 transition-colors">
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${errors.logoFile ? 'border-red-400 bg-red-50/50' : logoFile ? 'border-green-400 bg-green-50/50' : 'border-primary/30 bg-primary/5 hover:bg-primary/10'}`}>
                   <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Upload className="w-8 h-8 mb-3 text-primary/60" />
-                    <p className="mb-2 text-sm text-foreground/80"><span className="font-semibold text-primary">Haz clic para subir</span> o arrastra</p>
-                    <p className="text-xs text-muted-foreground">PNG, JPG (MAX. 2MB)</p>
+                    {logoFile ? (
+                      <>
+                        <CheckCircle className="w-8 h-8 mb-2 text-green-500" />
+                        <p className="text-sm font-semibold text-green-700">{logoFile.name}</p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-8 h-8 mb-3 text-primary/60" />
+                        <p className="mb-1 text-sm text-foreground/80"><span className="font-semibold text-primary">Haz clic para subir</span> o arrastra</p>
+                        <p className="text-xs text-muted-foreground">PNG, JPG (MAX. 2MB)</p>
+                      </>
+                    )}
                   </div>
-                  <input type="file" className="hidden" accept="image/png, image/jpeg" />
+                  <input type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleFileChange} />
                 </label>
               </div>
+              {errors.logoFile && <p className="text-sm text-red-500 mt-2 font-medium flex items-center gap-1 justify-center"><AlertCircle className="w-4 h-4"/> {errors.logoFile}</p>}
             </section>
           )}
 
           {/* 5. ESPECIFICACIONES */}
           <section>
             <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-4 border-b border-border pb-2">
-              <AlignLeft className="w-5 h-5 text-primary" /> 4. Especificaciones Adicionales
+              <AlignLeft className="w-5 h-5 text-primary" /> 5. Especificaciones (Opcional)
             </h2>
             <textarea 
               name="especificaciones" 
-              value={formData.especificaciones} 
+              value={form.especificaciones} 
               onChange={handleChange} 
-              className={`${inputClass} min-h-[120px] resize-y`} 
-              placeholder="Cuéntanos de qué tamaño lo necesitas, color, si es en el lado izquierdo o derecho..."
+              className={`${getInputClass(false)} min-h-[100px] resize-y`} 
+              placeholder="Ej: Lo necesito bordado en el lado izquierdo del pecho..."
             />
-            <p className="text-xs text-muted-foreground mt-2 text-center sm:text-left">
-              Si tu idea es más personalizada, envíanos un correo a <a href="mailto:bordados@msvaldivia.com" className="text-primary font-semibold hover:underline">bordados@msvaldivia.com</a>
-            </p>
           </section>
 
-          {/* CHECKBOX Y BOTON */}
-          <div className="pt-4 border-t border-border flex flex-col gap-6">
-            <label className="flex items-start gap-3 cursor-pointer group">
+          {/* CHECKBOX Y BOTÓN */}
+          <div className="pt-2 border-t border-border flex flex-col gap-6">
+            <div className="flex items-start gap-3 px-1">
               <input 
                 type="checkbox" 
-                name="acepta_terminos"
-                checked={formData.acepta_terminos}
-                onChange={handleChange}
-                className="mt-1 w-5 h-5 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                id="terms"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-1 w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
               />
-              <span className="text-sm text-foreground/80 group-hover:text-foreground transition-colors">
-                Acepto que he revisado la información completada y declaro que los datos ingresados son los correctos para iniciar el trabajo.
-              </span>
-            </label>
+              <label htmlFor="terms" className="text-sm text-muted-foreground leading-snug cursor-pointer select-none">
+                Acepto que he revisado la información completada y declaro que los datos ingresados son los correctos para iniciar el bordado.
+              </label>
+            </div>
 
-            <button 
-              type="button"
-              disabled={!formData.acepta_terminos}
-              className="w-full py-4 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg"
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 bg-gradient-to-r from-primary to-accent hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-lg"
             >
-              <FileText className="w-5 h-5" /> Enviar Datos para Bordado
+              {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Enviar Solicitud de Bordado"}
             </button>
           </div>
 
