@@ -3,6 +3,18 @@ import { validarYNormalizarRut } from "../utils/rut.js";
 import * as XLSX from "xlsx";
 
 /* -----------------------------
+   Helpers: Procesamiento por lotes (Chunking)
+   ✅ NUEVO: Previene el HeadersOverflowError al enviar muchos IDs
+------------------------------ */
+function chunkArray(array, size) {
+  const result = [];
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+  return result;
+}
+
+/* -----------------------------
    Helpers: Fuente embebida
 ------------------------------ */
 function pickFuenteEmbed(row) {
@@ -633,7 +645,7 @@ export async function actualizarFuenteClientes(req, res, next) {
 }
 
 /* -----------------------------
-   ✅ ELIMINAR FUENTE (MIXTO)
+   ✅ ELIMINAR FUENTE (MIXTO PROTEGIDO CON CHUNKS)
 ------------------------------ */
 export async function eliminarFuenteClientes(req, res, next) {
   try {
@@ -679,29 +691,46 @@ export async function eliminarFuenteClientes(req, res, next) {
       });
     }
 
-    const { data: compras, error: compErr } = await supabaseAdmin
-      .from("compras")
-      .select("cliente_id")
-      .in("cliente_id", clienteIds);
+    // ✅ Búsqueda de compras protegida con chunks
+    const conComprasSet = new Set();
+    const chunksClientes = chunkArray(clienteIds, 100);
 
-    if (compErr) throw compErr;
+    for (const chunk of chunksClientes) {
+      const { data: comprasChunk, error: compErr } = await supabaseAdmin
+        .from("compras")
+        .select("cliente_id")
+        .in("cliente_id", chunk);
 
-    const conComprasSet = new Set((compras || []).map((r) => r.cliente_id).filter(Boolean));
+      if (compErr) throw compErr;
+      
+      (comprasChunk || []).forEach((r) => {
+        if (r.cliente_id) conComprasSet.add(r.cliente_id);
+      });
+    }
+
     const conCompras = clienteIds.filter((cid) => conComprasSet.has(cid));
     const sinCompras = clienteIds.filter((cid) => !conComprasSet.has(cid));
 
+    // ✅ Borrado protegido con chunks
     if (sinCompras.length > 0) {
-      const { error: delCliErr } = await supabaseAdmin.from("clientes").delete().in("id", sinCompras);
-      if (delCliErr) throw delCliErr;
+      const chunksSinCompras = chunkArray(sinCompras, 100);
+      for (const chunk of chunksSinCompras) {
+        const { error: delCliErr } = await supabaseAdmin.from("clientes").delete().in("id", chunk);
+        if (delCliErr) throw delCliErr;
+      }
     }
 
+    // ✅ Actualización protegida con chunks
     if (conCompras.length > 0) {
-      const { error: updCliErr } = await supabaseAdmin
-        .from("clientes")
-        .update({ estado: "eliminado", fuente_id: null })
-        .in("id", conCompras);
+      const chunksConCompras = chunkArray(conCompras, 100);
+      for (const chunk of chunksConCompras) {
+        const { error: updCliErr } = await supabaseAdmin
+          .from("clientes")
+          .update({ estado: "eliminado", fuente_id: null })
+          .in("id", chunk);
 
-      if (updCliErr) throw updCliErr;
+        if (updCliErr) throw updCliErr;
+      }
     }
 
     const { error: delFuenteErr } = await supabaseAdmin.from("fuentes_clientes").delete().eq("id", id);
@@ -723,7 +752,7 @@ export async function eliminarFuenteClientes(req, res, next) {
 }
 
 /* -----------------------------
-   Import interno con “conflictos por fuente”
+   Import interno con “conflictos por fuente” (PROTEGIDO)
 ------------------------------ */
 async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}) {
   const buffer = await fetchXlsxFromDrive(driveUrl);
@@ -760,14 +789,19 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
 
   const existentesMap = new Map();
   if (ruts.length > 0) {
-    const { data: existentes, error: exErr } = await supabaseAdmin
-      .from("clientes")
-      .select("rut, fuente_id")
-      .in("rut", ruts);
+    // ✅ Búsqueda de RUTs protegida con chunks para evitar Overflow en Excels grandes
+    const chunksRuts = chunkArray(ruts, 100);
+    for (const chunk of chunksRuts) {
+      const { data: existentesChunk, error: exErr } = await supabaseAdmin
+        .from("clientes")
+        .select("rut, fuente_id")
+        .in("rut", chunk);
 
-    if (exErr) throw exErr;
-    for (const e of existentes || []) {
-      existentesMap.set(e.rut, e.fuente_id ?? null);
+      if (exErr) throw exErr;
+      
+      for (const e of existentesChunk || []) {
+        existentesMap.set(e.rut, e.fuente_id ?? null);
+      }
     }
   }
 
