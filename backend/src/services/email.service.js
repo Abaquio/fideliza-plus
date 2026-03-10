@@ -107,31 +107,31 @@ export const enviarCorreoConfirmacionBordado = async (email, nombre) => {
 };
 
 /**
- * 4. Correo de aviso para TIENDA (Bordados - MODO PRUEBA)
- * ✅ AHORA CON SOPORTE PARA ADJUNTOS BASE64
+ * 4. Correo de aviso para TIENDA (Bordados - PRODUCCIÓN)
+ * ✅ AHORA CON EL CORREO OFICIAL DE MEDICAL SEASON
  */
 export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
   try {
     const {
       contacto_nombre, contacto_apellido, contacto_rut, contacto_telefono, contacto_correo,
       modelo_bordado, bordado_nombre, bordado_apellido, bordado_profesion, bordado_universidad,
-      especificaciones, logo_base64 // 👈 AQUÍ RECIBIMOS LA IMAGEN
+      especificaciones, logo_base64 
     } = datos;
 
-    // 👈 PREPARAMOS EL ARCHIVO ADJUNTO SI EL CLIENTE SUBIÓ UNO
     const attachments = [];
     if (logo_base64) {
       attachments.push({
         filename: `Logo_${contacto_nombre}_${contacto_apellido}.jpg`.replace(/\s+/g, '_'),
-        path: logo_base64 // Nodemailer convierte el texto Base64 en archivo automáticamente
+        path: logo_base64 
       });
     }
 
     const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
-      to: 'fidelizaplus.chile@gmail.com', // Correo de pruebas tuyo
+      // 👇 AQUÍ ESTÁ EL CAMBIO AL CORREO OFICIAL
+      to: 'medicalseasoncl@gmail.com', 
       subject: `Nueva Solicitud de Bordado - ${contacto_nombre} ${contacto_apellido}`,
-      attachments, // 👈 LE PASAMOS EL ARRAY DE ADJUNTOS A NODEMAILER
+      attachments, 
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
           <h2 style="color: #4F46E5;">Nueva Solicitud de Bordado 🧵</h2>
