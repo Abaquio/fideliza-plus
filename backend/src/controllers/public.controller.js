@@ -1,6 +1,10 @@
 import { supabaseAdmin } from "../db/supabaseAdmin.js";
-// ✅ IMPORTAR SERVICIO DE EMAIL
-import { enviarCorreoBienvenidaCliente } from "../services/email.service.js";
+// ✅ IMPORTAR SERVICIOS DE EMAIL (Agregamos los nuevos de bordado)
+import { 
+  enviarCorreoBienvenidaCliente,
+  enviarCorreoConfirmacionBordado,
+  enviarCorreoNuevaSolicitudBordado 
+} from "../services/email.service.js";
 
 /**
  * Helper para obtener o crear la fuente "Medical Season"
@@ -152,6 +156,50 @@ export const registrarClientePublico = async (req, res) => {
     return res.status(500).json({ 
       ok: false, 
       message: error.message || "Error interno al registrar." 
+    });
+  }
+};
+
+/**
+ * ✅ NUEVO: POST /api/public/bordado
+ * Recibe los datos del formulario de bordado y dispara los correos.
+ */
+export const solicitarBordado = async (req, res) => {
+  try {
+    const datosFormulario = req.body;
+
+    // Validación básica de seguridad
+    if (!datosFormulario.contacto_correo || !datosFormulario.contacto_nombre) {
+      return res.status(400).json({ ok: false, message: "Faltan datos de contacto obligatorios." });
+    }
+
+    // 1. Enviar correo de confirmación al cliente (sin await para no bloquear la respuesta)
+    enviarCorreoConfirmacionBordado(datosFormulario.contacto_correo, datosFormulario.contacto_nombre)
+      .then(sent => {
+        if(sent) console.log(`📧 Confirmación de bordado enviada a ${datosFormulario.contacto_correo}`);
+        else console.warn(`⚠️ No se pudo enviar confirmación a ${datosFormulario.contacto_correo}`);
+      })
+      .catch(err => console.error("Error envío mail cliente:", err));
+
+    // 2. Enviar correo con los datos a Medical Season
+    enviarCorreoNuevaSolicitudBordado(datosFormulario)
+      .then(sent => {
+        if(sent) console.log(`📧 Aviso de nuevo bordado enviado a la tienda`);
+        else console.warn(`⚠️ No se pudo enviar aviso a la tienda`);
+      })
+      .catch(err => console.error("Error envío mail tienda:", err));
+
+    // Retornar éxito al frontend inmediatamente
+    return res.status(200).json({ 
+      ok: true, 
+      message: "Solicitud de bordado recibida correctamente." 
+    });
+
+  } catch (error) {
+    console.error("Error en solicitud de bordado:", error);
+    return res.status(500).json({ 
+      ok: false, 
+      message: error.message || "Error interno al procesar la solicitud." 
     });
   }
 };
