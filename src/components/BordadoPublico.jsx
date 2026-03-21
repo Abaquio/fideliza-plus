@@ -6,6 +6,13 @@ import {
   Upload, User, Mail, Phone, FileText, GraduationCap, AlignLeft, Image as ImageIcon 
 } from "lucide-react"
 
+// ✅ Importación de Logos desde src/assets
+import inacapLogo from "../assets/inacap-logo.jpg"
+import australLogo from "../assets/austral-logo.jpg"
+import ussLogo from "../assets/uss-logo.jpg"
+import ustLogo from "../assets/ust-logo.jpg"
+
+// ✅ Importamos tus validaciones
 import {
   normalizarRut, 
   validarRut,
@@ -14,6 +21,7 @@ import {
   validarYNormalizarTelefono
 } from "../utils/validaciones"
 
+// ✅ Configuración de la URL de tu API
 function getApiBase() {
   const fromEnv = import.meta?.env?.VITE_API_URL
   if (fromEnv) return String(fromEnv).replace(/\/$/, "")
@@ -22,6 +30,7 @@ function getApiBase() {
   return "https://fideliza-plus.onrender.com"
 }
 
+// ✅ MOTOR DE COMPRESIÓN DE IMÁGENES
 const compressImageToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -64,7 +73,7 @@ export default function BordadoPublico() {
   const [generalError, setGeneralError] = useState("")
 
   const [form, setForm] = useState({
-    contacto_folio: "", // ✅ NUEVO CAMPO
+    contacto_folio: "", 
     contacto_nombre: "",
     contacto_apellido: "",
     contacto_rut: "",
@@ -75,13 +84,13 @@ export default function BordadoPublico() {
     bordado_apellido: "",
     bordado_profesion: "",
     bordado_universidad: "",
-    especificaciones: ""
+    especificaciones: "" // ✅ Ahora será obligatorio
   })
 
   const [logoFile, setLogoFile] = useState(null)
 
   const [errors, setErrors] = useState({
-    contacto_folio: "", // ✅ NUEVO ERROR
+    contacto_folio: "",
     contacto_nombre: "",
     contacto_apellido: "",
     contacto_rut: "",
@@ -92,17 +101,26 @@ export default function BordadoPublico() {
     bordado_apellido: "",
     bordado_profesion: "",
     bordado_universidad: "",
+    especificaciones: "", // ✅ Añadido al control de errores
     logoFile: ""
   })
 
   const [acceptedTerms, setAcceptedTerms] = useState(false)
+
+  // ✅ Definición de opciones de logo visuales
+  const logoOptions = [
+    { id: "inacap", src: inacapLogo, alt: "INACAP" },
+    { id: "u_austral", src: australLogo, alt: "U. Austral" },
+    { id: "uss", src: ussLogo, alt: "USS" },
+    { id: "ust", src: ustLogo, alt: "UST" },
+    { id: "otro", src: null, alt: "N/A (Otro Logo)", icon: ImageIcon },
+  ];
 
   const handleChange = (e) => {
     const { name, value } = e.target
     let finalValue = value
     let errorMsg = ""
 
-    // ✅ Filtro para N° Folio (Solo números)
     if (name === "contacto_folio") {
       finalValue = value.replace(/\D/g, "")
     }
@@ -130,6 +148,11 @@ export default function BordadoPublico() {
          if (!valido) errorMsg = "Mínimo 8 dígitos"
       }
     }
+    else if (name === "especificaciones") {
+      if (value.trim().length > 0 && value.trim().length < 5) {
+        errorMsg = "Por favor, detalla un poco más tu solicitud"
+      }
+    }
 
     setForm(prev => ({ ...prev, [name]: finalValue }))
     setErrors(prev => ({ ...prev, [name]: errorMsg }))
@@ -143,7 +166,7 @@ export default function BordadoPublico() {
 
   const handleBlur = (e) => {
     const { name, value } = e.target
-    if (name.includes("nombre") || name.includes("apellido") || name === "bordado_profesion" || name === "bordado_universidad") {
+    if (name.includes("nombre") || name.includes("apellido") || name === "bordado_profesion" || name === "bordado_universidad" || name === "especificaciones") {
       setForm(prev => ({ ...prev, [name]: value.trim().replace(/\s+/g, " ") }))
     }
   }
@@ -152,7 +175,7 @@ export default function BordadoPublico() {
     const file = e.target.files[0]
     setGeneralError("")
     if (file) {
-      if (file.size > 10 * 1024 * 1024) {
+      if (file.size > 10 * 1024 * 1024) { // ✅ Límite de 10MB restaurado
         setErrors(prev => ({ ...prev, logoFile: "El archivo es demasiado grande (Máx 10MB)" }))
         setLogoFile(null)
       } else {
@@ -169,7 +192,6 @@ export default function BordadoPublico() {
     const newErrors = { ...errors }
     let hasError = false
 
-    // ✅ Validación de Folio requerido
     if (!form.contacto_folio.trim()) { newErrors.contacto_folio = "Requerido"; hasError = true; }
     if (!validarRut(form.contacto_rut)) { newErrors.contacto_rut = "RUT inválido"; hasError = true; }
     if (form.contacto_nombre.trim().length < 2) { newErrors.contacto_nombre = "Requerido"; hasError = true; }
@@ -188,6 +210,12 @@ export default function BordadoPublico() {
     if (form.bordado_apellido.trim().length < 2) { newErrors.bordado_apellido = "Requerido"; hasError = true; }
     if (form.bordado_profesion.trim().length < 2) { newErrors.bordado_profesion = "Requerido"; hasError = true; }
     if (form.bordado_universidad.trim().length < 2) { newErrors.bordado_universidad = "Requerido"; hasError = true; }
+
+    // ✅ Validación de Especificaciones obligatorias
+    if (form.especificaciones.trim().length < 5) { 
+      newErrors.especificaciones = "Las especificaciones son obligatorias para poder realizar el bordado"
+      hasError = true
+    }
 
     if (form.modelo_bordado === "otro" && !logoFile) {
       newErrors.logoFile = "Debes adjuntar tu logo"
@@ -219,7 +247,7 @@ export default function BordadoPublico() {
       }
 
       const payload = {
-        contacto_folio: form.contacto_folio.trim(), // ✅ SE ENVÍA AL BACKEND
+        contacto_folio: form.contacto_folio.trim(), 
         contacto_nombre: form.contacto_nombre.trim(),
         contacto_apellido: form.contacto_apellido.trim(),
         contacto_rut: form.contacto_rut,
@@ -292,6 +320,7 @@ export default function BordadoPublico() {
       
       <div className="w-full max-w-3xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-10 animate-scale-in">
         
+        {/* ENCABEZADO */}
         <div className="bg-gradient-to-b from-primary/5 to-transparent p-6 text-center border-b border-border">
           <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-3 shadow-lg shadow-primary/20">
             MS
@@ -315,8 +344,6 @@ export default function BordadoPublico() {
               <User className="w-5 h-5 text-primary" /> 1. Tus Datos de Contacto
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
-              {/* ✅ NUEVO CAMPO FOLIO Y RUT EN LA PRIMERA FILA */}
               <div>
                 <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">N° Folio</label>
                 <input name="contacto_folio" type="text" inputMode="numeric" value={form.contacto_folio} onChange={handleChange} className={getInputClass(!!errors.contacto_folio)} placeholder="Ej: 12345" />
@@ -328,7 +355,6 @@ export default function BordadoPublico() {
                 {errors.contacto_rut && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_rut}</p>}
               </div>
 
-              {/* ✅ NOMBRE Y APELLIDO EN LA SEGUNDA FILA */}
               <div>
                 <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre</label>
                 <input name="contacto_nombre" value={form.contacto_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.contacto_nombre)} placeholder="Juan" />
@@ -340,7 +366,6 @@ export default function BordadoPublico() {
                 {errors.contacto_apellido && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_apellido}</p>}
               </div>
 
-              {/* ✅ TELÉFONO Y CORREO EN LA TERCERA FILA */}
               <div>
                 <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80 flex items-center gap-1">Teléfono</label>
                 <input name="contacto_telefono" type="tel" value={form.contacto_telefono} onChange={handleChange} onFocus={() => { if (!form.contacto_telefono) setForm(prev => ({...prev, contacto_telefono: "+56"})) }} className={getInputClass(!!errors.contacto_telefono)} placeholder="+56 9 ..." />
@@ -351,38 +376,75 @@ export default function BordadoPublico() {
                 <input name="contacto_correo" type="email" value={form.contacto_correo} onChange={handleChange} className={getInputClass(!!errors.contacto_correo)} placeholder="hola@ejemplo.com" />
                 {errors.contacto_correo && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_correo}</p>}
               </div>
-
             </div>
           </section>
 
-          {/* 2. MODELO TIPO DE BORDADO */}
+          {/* 2. MODELO TIPO DE BORDADO UNIVERSITARIO */}
           <section>
             <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-4 border-b border-border pb-2">
               <ImageIcon className="w-5 h-5 text-primary" /> 2. Tipo de Bordado Universitario
             </h2>
-            {errors.modelo_bordado && <p className="text-sm text-red-500 mb-3 font-medium flex items-center gap-1"><AlertCircle className="w-4 h-4"/> {errors.modelo_bordado}</p>}
+            {errors.modelo_bordado && <p className="text-sm text-red-500 mb-4 font-medium flex items-center gap-1"><AlertCircle className="w-4 h-4"/> {errors.modelo_bordado}</p>}
             
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { id: "uss_obstetricia", label: "USS Obstetricia", color: "bg-green-50 border-green-200" },
-                { id: "uss_odontologia", label: "USS Odontología", color: "bg-emerald-50 border-emerald-200" },
-                { id: "u_austral", label: "U. Austral (Matriz)", color: "bg-orange-50 border-orange-200" },
-                { id: "otro", label: "N/A (Otro Logo)", color: "bg-muted border-border" }
-              ].map((opcion) => (
-                <label 
-                  key={opcion.id} 
-                  className={`relative flex flex-col items-center justify-center p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                    form.modelo_bordado === opcion.id 
-                      ? "border-primary ring-2 ring-primary/20 shadow-md scale-[1.02]" 
-                      : `${opcion.color} hover:shadow-sm grayscale-[0.5]`
-                  }`}
-                >
-                  <input type="radio" name="modelo_bordado" value={opcion.id} onChange={handleChange} className="sr-only" />
-                  {form.modelo_bordado === opcion.id && <CheckCircle className="absolute top-2 right-2 w-4 h-4 text-primary" />}
-                  <span className="text-xs font-bold text-center mt-1 text-foreground/90">{opcion.label}</span>
-                </label>
-              ))}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {logoOptions.map((opcion) => {
+                const isSelected = form.modelo_bordado === opcion.id;
+                return (
+                  <label 
+                    key={opcion.id} 
+                    className={`relative flex flex-col items-center justify-center p-3 border-2 rounded-2xl cursor-pointer transition-all ${getInputClass(isSelected)} ${getInputClass(!!errors.modelo_bordado)} ${
+                      isSelected 
+                        ? "border-primary ring-2 ring-primary/20 bg-primary/5 scale-105 shadow-lg" 
+                        : "border-border hover:border-primary/50 hover:bg-muted/50 hover:shadow-sm"
+                    }`}
+                  >
+                    <input type="radio" name="modelo_bordado" value={opcion.id} onChange={handleChange} className="sr-only" />
+                    {isSelected && <CheckCircle className="absolute top-2 right-2 w-5 h-5 text-primary animate-scale-in" />}
+                    
+                    <div className="w-full h-16 flex items-center justify-center p-1 mb-2">
+                      {opcion.src ? (
+                        <img src={opcion.src} alt={opcion.alt} className="max-h-full max-w-full object-contain" />
+                      ) : (
+                        <opcion.icon className="w-10 h-10 text-muted-foreground/70" />
+                      )}
+                    </div>
+                    
+                    <span className="text-xs font-bold text-center text-foreground/90 leading-tight px-1">{opcion.alt}</span>
+                  </label>
+                )
+              })}
             </div>
+
+            {/* ADJUNTAR IMAGEN */}
+            {form.modelo_bordado === "otro" && (
+              <div className="animate-fade-in bg-muted/30 p-5 rounded-xl border border-border mt-5">
+                <h3 className="flex items-center gap-2 text-md font-bold text-foreground mb-2">
+                  <Upload className="w-4 h-4 text-primary" /> Adjunta tu Logo Propio
+                </h3>
+                <p className="text-sm text-muted-foreground mb-4">Requerido en formato PNG o JPG (hasta 10MB. Se comprimirá automáticamente).</p>
+                
+                <div className="flex items-center justify-center w-full">
+                  <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${errors.logoFile ? 'border-red-400 bg-red-50/50' : logoFile ? 'border-green-400 bg-green-50/50' : 'border-primary/30 bg-primary/5 hover:bg-primary/10'}`}>
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      {logoFile ? (
+                        <>
+                          <CheckCircle className="w-8 h-8 mb-2 text-green-500" />
+                          <p className="text-sm font-semibold text-green-700">{logoFile.name}</p>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-8 h-8 mb-3 text-primary/60" />
+                          <p className="mb-1 text-sm text-foreground/80"><span className="font-semibold text-primary">Haz clic para subir</span> o arrastra</p>
+                          <p className="text-xs text-muted-foreground">PNG, JPG (MAX. 10MB)</p>
+                        </>
+                      )}
+                    </div>
+                    <input type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleFileChange} />
+                  </label>
+                </div>
+                {errors.logoFile && <p className="text-sm text-red-500 mt-2 font-medium flex items-center gap-1 justify-center"><AlertCircle className="w-4 h-4"/> {errors.logoFile}</p>}
+              </div>
+            )}
           </section>
 
           {/* 3. DATOS PARA TU BORDADO */}
@@ -414,49 +476,27 @@ export default function BordadoPublico() {
             </div>
           </section>
 
-          {/* 4. ADJUNTAR IMAGEN */}
-          {form.modelo_bordado === "otro" && (
-            <section className="animate-fade-in bg-muted/30 p-5 rounded-xl border border-border">
-              <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-2">
-                <Upload className="w-5 h-5 text-primary" /> 4. Adjunta tu Logo
-              </h2>
-              <p className="text-sm text-muted-foreground mb-4">Requerido en formato PNG o JPG (hasta 10MB. Se comprimirá automáticamente).</p>
-              
-              <div className="flex items-center justify-center w-full">
-                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${errors.logoFile ? 'border-red-400 bg-red-50/50' : logoFile ? 'border-green-400 bg-green-50/50' : 'border-primary/30 bg-primary/5 hover:bg-primary/10'}`}>
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    {logoFile ? (
-                      <>
-                        <CheckCircle className="w-8 h-8 mb-2 text-green-500" />
-                        <p className="text-sm font-semibold text-green-700">{logoFile.name}</p>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-8 h-8 mb-3 text-primary/60" />
-                        <p className="mb-1 text-sm text-foreground/80"><span className="font-semibold text-primary">Haz clic para subir</span> o arrastra</p>
-                        <p className="text-xs text-muted-foreground">PNG, JPG (MAX. 10MB)</p>
-                      </>
-                    )}
-                  </div>
-                  <input type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleFileChange} />
-                </label>
-              </div>
-              {errors.logoFile && <p className="text-sm text-red-500 mt-2 font-medium flex items-center gap-1 justify-center"><AlertCircle className="w-4 h-4"/> {errors.logoFile}</p>}
-            </section>
-          )}
-
-          {/* 5. ESPECIFICACIONES */}
+          {/* 4. ESPECIFICACIONES (AHORA OBLIGATORIAS) */}
           <section>
-            <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-4 border-b border-border pb-2">
-              <AlignLeft className="w-5 h-5 text-primary" /> 5. Especificaciones (Opcional)
+            <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-1 border-b border-border pb-2">
+              <AlignLeft className="w-5 h-5 text-primary" /> 4. Especificaciones del Bordado
             </h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              * Estas indicaciones son <strong className="text-primary font-semibold">obligatorias</strong> para realizar tu bordado correctamente.
+            </p>
             <textarea 
               name="especificaciones" 
               value={form.especificaciones} 
               onChange={handleChange} 
-              className={`${getInputClass(false)} min-h-[100px] resize-y`} 
-              placeholder="Ej: Lo necesito bordado en el lado izquierdo del pecho..."
+              onBlur={handleBlur}
+              className={`${getInputClass(!!errors.especificaciones)} min-h-[100px] resize-y`} 
+              placeholder="Ej: Lo necesito bordado en el lado izquierdo del pecho, usar hilo azul marino, etc..."
             />
+            {errors.especificaciones && (
+              <p className="text-sm text-red-500 mt-2 font-medium flex items-center gap-1">
+                <AlertCircle className="w-4 h-4"/> {errors.especificaciones}
+              </p>
+            )}
           </section>
 
           {/* CHECKBOX Y BOTÓN */}
