@@ -113,8 +113,8 @@ export default function BordadoPublico() {
     { id: "inacap", src: inacapLogo, alt: "INACAP" },
     { id: "u_austral", src: australLogo, alt: "U. Austral" },
     { id: "uss", src: ussLogo, alt: "USS" },
-    { id: "ust", src: ustLogo, alt: "UST (Prof.)" },
-    { id: "ust_cft", src: ustCftLogo, alt: "Santo Tomás (CFT)" }, // ✅ NUEVO
+    { id: "ust", src: ustLogo, alt: "UST 1" },
+    { id: "ust_cft", src: ustCftLogo, alt: "UST 2" }, // ✅ NUEVO
     { id: "otro", src: null, alt: "N/A (Otro Logo)", icon: ImageIcon },
   ];
 
