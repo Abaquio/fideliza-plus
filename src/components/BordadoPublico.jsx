@@ -11,6 +11,7 @@ import inacapLogo from "../assets/inacap-logo.jpg"
 import australLogo from "../assets/austral-logo.jpg"
 import ussLogo from "../assets/uss-logo.jpg"
 import ustLogo from "../assets/ust-logo.jpg"
+import ustCftLogo from "../assets/ust-cft-logo.jpg" // ✅ NUEVO LOGO CFT
 
 // ✅ Importamos tus validaciones
 import {
@@ -84,7 +85,7 @@ export default function BordadoPublico() {
     bordado_apellido: "",
     bordado_profesion: "",
     bordado_universidad: "",
-    especificaciones: "" // ✅ Ahora será obligatorio
+    especificaciones: "" 
   })
 
   const [logoFile, setLogoFile] = useState(null)
@@ -101,18 +102,19 @@ export default function BordadoPublico() {
     bordado_apellido: "",
     bordado_profesion: "",
     bordado_universidad: "",
-    especificaciones: "", // ✅ Añadido al control de errores
+    especificaciones: "",
     logoFile: ""
   })
 
   const [acceptedTerms, setAcceptedTerms] = useState(false)
 
-  // ✅ Definición de opciones de logo visuales
+  // ✅ Definición de opciones de logo visuales con CFT incluido
   const logoOptions = [
     { id: "inacap", src: inacapLogo, alt: "INACAP" },
     { id: "u_austral", src: australLogo, alt: "U. Austral" },
     { id: "uss", src: ussLogo, alt: "USS" },
-    { id: "ust", src: ustLogo, alt: "UST" },
+    { id: "ust", src: ustLogo, alt: "UST (Prof.)" },
+    { id: "ust_cft", src: ustCftLogo, alt: "Santo Tomás (CFT)" }, // ✅ NUEVO
     { id: "otro", src: null, alt: "N/A (Otro Logo)", icon: ImageIcon },
   ];
 
@@ -175,7 +177,7 @@ export default function BordadoPublico() {
     const file = e.target.files[0]
     setGeneralError("")
     if (file) {
-      if (file.size > 10 * 1024 * 1024) { // ✅ Límite de 10MB restaurado
+      if (file.size > 10 * 1024 * 1024) { 
         setErrors(prev => ({ ...prev, logoFile: "El archivo es demasiado grande (Máx 10MB)" }))
         setLogoFile(null)
       } else {
@@ -211,7 +213,6 @@ export default function BordadoPublico() {
     if (form.bordado_profesion.trim().length < 2) { newErrors.bordado_profesion = "Requerido"; hasError = true; }
     if (form.bordado_universidad.trim().length < 2) { newErrors.bordado_universidad = "Requerido"; hasError = true; }
 
-    // ✅ Validación de Especificaciones obligatorias
     if (form.especificaciones.trim().length < 5) { 
       newErrors.especificaciones = "Las especificaciones son obligatorias para poder realizar el bordado"
       hasError = true
@@ -344,6 +345,8 @@ export default function BordadoPublico() {
               <User className="w-5 h-5 text-primary" /> 1. Tus Datos de Contacto
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              {/* ✅ NUEVO CAMPO FOLIO Y RUT EN LA PRIMERA FILA */}
               <div>
                 <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">N° Folio</label>
                 <input name="contacto_folio" type="text" inputMode="numeric" value={form.contacto_folio} onChange={handleChange} className={getInputClass(!!errors.contacto_folio)} placeholder="Ej: 12345" />
@@ -376,6 +379,7 @@ export default function BordadoPublico() {
                 <input name="contacto_correo" type="email" value={form.contacto_correo} onChange={handleChange} className={getInputClass(!!errors.contacto_correo)} placeholder="hola@ejemplo.com" />
                 {errors.contacto_correo && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.contacto_correo}</p>}
               </div>
+
             </div>
           </section>
 
@@ -386,7 +390,8 @@ export default function BordadoPublico() {
             </h2>
             {errors.modelo_bordado && <p className="text-sm text-red-500 mb-4 font-medium flex items-center gap-1"><AlertCircle className="w-4 h-4"/> {errors.modelo_bordado}</p>}
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {/* ✅ Cuadrícula de 3 columnas para alinear perfectamente 6 opciones */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
               {logoOptions.map((opcion) => {
                 const isSelected = form.modelo_bordado === opcion.id;
                 return (
@@ -403,7 +408,7 @@ export default function BordadoPublico() {
                     
                     <div className="w-full h-16 flex items-center justify-center p-1 mb-2">
                       {opcion.src ? (
-                        <img src={opcion.src} alt={opcion.alt} className="max-h-full max-w-full object-contain" />
+                        <img src={opcion.src} alt={opcion.alt} className="max-h-full max-w-full object-contain mix-blend-multiply" />
                       ) : (
                         <opcion.icon className="w-10 h-10 text-muted-foreground/70" />
                       )}
@@ -476,7 +481,7 @@ export default function BordadoPublico() {
             </div>
           </section>
 
-          {/* 4. ESPECIFICACIONES (AHORA OBLIGATORIAS) */}
+          {/* 4. ESPECIFICACIONES */}
           <section>
             <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-1 border-b border-border pb-2">
               <AlignLeft className="w-5 h-5 text-primary" /> 4. Especificaciones del Bordado
