@@ -4,15 +4,22 @@ import { useState } from "react"
 import { 
   CheckCircle, Loader2, AlertTriangle, AlertCircle, 
   Upload, User, Mail, Phone, FileText, GraduationCap, AlignLeft, Image as ImageIcon,
-  Type // ✅ Importamos el ícono para "Sin Logo"
+  Type
 } from "lucide-react"
 
-// ✅ Importación de Logos desde src/assets
-import inacapLogo from "../assets/inacap-logo.jpg"
-import australLogo from "../assets/austral-logo.jpg"
-import ussLogo from "../assets/uss-logo.jpg"
-import ustLogo from "../assets/ust-logo.jpg"
+// ✅ Logos Universitarios
+import inacapLogo from "../assets/inacap-logo.jpeg"
+import australLogo from "../assets/austral-logo.jpeg"
+import ussLogo from "../assets/uss-logo.jpeg"
+import ustLogo from "../assets/ust-logo.jpeg"
 import ustCftLogo from "../assets/ust-cft-logo.jpg"
+import sinLogoImg from "../assets/nombre-apellido-profesion.jpeg"
+
+// ✅ Nuevas imágenes para posición del bordado
+import ladoDerechoImg from "../assets/lado-derecho-top.jpeg"
+import ladoIzquierdoImg from "../assets/lado-izquierdo-top.jpeg"
+import sobreBolsilloImg from "../assets/sobre-bolsillo-top.jpeg"
+import arribaBolsilloImg from "../assets/arriba-bolsillo-top.jpeg"
 
 import {
   normalizarRut, 
@@ -29,6 +36,7 @@ function getApiBase() {
   return "https://fideliza-plus.onrender.com"
 }
 
+// MOTOR DE COMPRESIÓN MEJORADO
 const compressImageToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -36,28 +44,36 @@ const compressImageToBase64 = (file) => {
     reader.onload = (event) => {
       const img = new Image();
       img.src = event.target.result;
+      
       img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 800; 
-        
-        let width = img.width;
-        let height = img.height;
+        try {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 800; 
+          
+          let width = img.width;
+          let height = img.height;
 
-        if (width > MAX_WIDTH) {
-          height = Math.round((height * MAX_WIDTH) / width);
-          width = MAX_WIDTH;
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width);
+            width = MAX_WIDTH;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          const base64String = canvas.toDataURL("image/jpeg", 0.7);
+          resolve(base64String);
+        } catch (error) {
+          resolve(event.target.result);
         }
-
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        const base64String = canvas.toDataURL("image/jpeg", 0.7);
-        resolve(base64String);
       };
-      img.onerror = (error) => reject(error);
+      
+      img.onerror = () => {
+        resolve(event.target.result); 
+      };
     };
     reader.onerror = (error) => reject(error);
   });
@@ -69,6 +85,9 @@ export default function BordadoPublico() {
   const [step, setStep] = useState("form")
   const [loading, setLoading] = useState(false)
   const [generalError, setGeneralError] = useState("")
+
+  const [nombresModificados, setNombresModificados] = useState(false)
+  const [univOtra, setUnivOtra] = useState(false)
 
   const [form, setForm] = useState({
     contacto_folio: "", 
@@ -82,8 +101,9 @@ export default function BordadoPublico() {
     bordado_apellido: "",
     bordado_profesion: "",
     bordado_universidad: "",
-    genero: "", // ✅ NUEVO CAMPO
-    posicion_bordado: "", // ✅ NUEVO CAMPO
+    lado_bordado: "",      
+    tiene_bolsillo: "",    
+    posicion_bolsillo: "", 
     especificaciones: "" 
   })
 
@@ -101,15 +121,15 @@ export default function BordadoPublico() {
     bordado_apellido: "",
     bordado_profesion: "",
     bordado_universidad: "",
-    genero: "", // ✅ NUEVO
-    posicion_bordado: "", // ✅ NUEVO
+    lado_bordado: "",
+    tiene_bolsillo: "",
+    posicion_bolsillo: "",
     especificaciones: "",
     logoFile: ""
   })
 
   const [acceptedTerms, setAcceptedTerms] = useState(false)
 
-  // ✅ Ahora hay 7 opciones, incluyendo "Sin Logo"
   const logoOptions = [
     { id: "inacap", src: inacapLogo, alt: "INACAP" },
     { id: "u_austral", src: australLogo, alt: "U. Austral" },
@@ -117,7 +137,7 @@ export default function BordadoPublico() {
     { id: "ust", src: ustLogo, alt: "UST (Prof.)" },
     { id: "ust_cft", src: ustCftLogo, alt: "Santo Tomás (CFT)" },
     { id: "otro", src: null, alt: "Logo Propio", icon: ImageIcon },
-    { id: "sin_logo", src: null, alt: "Sin Logo / Solo Texto", icon: Type }, // ✅ NUEVA OPCIÓN
+    { id: "sin_logo", src: sinLogoImg, alt: "Sin Logo / Solo Texto", icon: Type }, 
   ];
 
   const handleChange = (e) => {
@@ -135,7 +155,6 @@ export default function BordadoPublico() {
       }
     } 
     else if (name.includes("nombre") || name.includes("apellido") || name === "bordado_profesion" || name === "bordado_universidad") {
-      // ✅ AHORA PERMITE EL PUNTO PARA CASOS COMO "Matias S."
       finalValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s.]/g, "")
       if (finalValue.length > 0 && finalValue.trim().length < 2) {
         errorMsg = "Mínimo 2 caracteres"
@@ -159,20 +178,57 @@ export default function BordadoPublico() {
       }
     }
 
-    setForm(prev => ({ ...prev, [name]: finalValue }))
-    setErrors(prev => ({ ...prev, [name]: errorMsg }))
-    setGeneralError("")
-
-    // Si cambian el modelo de bordado, limpiamos errores de logo y reseteamos el archivo
-    if (name === "modelo_bordado") {
-      setErrors(prev => ({ ...prev, logoFile: "" }))
-      if (value !== "otro") setLogoFile(null)
+    if (name === "bordado_nombre" || name === "bordado_apellido") {
+      setNombresModificados(true);
     }
 
-    // Si cambian de género, reseteamos la posición
-    if (name === "genero" && value !== "hombre") {
-      setForm(prev => ({ ...prev, posicion_bordado: "" }))
-      setErrors(prev => ({ ...prev, posicion_bordado: "" }))
+    setForm(prev => {
+      const updated = { ...prev, [name]: finalValue };
+
+      if (name === "contacto_nombre" && !nombresModificados) {
+        updated.bordado_nombre = finalValue;
+      }
+      if (name === "contacto_apellido" && !nombresModificados) {
+        updated.bordado_apellido = finalValue;
+      }
+
+      if (name === "modelo_bordado") {
+        if (value === "inacap") { updated.bordado_universidad = "INACAP"; setUnivOtra(false); }
+        else if (value === "u_austral") { updated.bordado_universidad = "Universidad Austral"; setUnivOtra(false); }
+        else if (value === "uss") { updated.bordado_universidad = "Universidad San Sebastián"; setUnivOtra(false); }
+        else if (value === "ust") { updated.bordado_universidad = "Universidad Santo Tomás"; setUnivOtra(false); }
+        else if (value === "ust_cft") { updated.bordado_universidad = "Santo Tomás CFT"; setUnivOtra(false); }
+        else if (value === "sin_logo") { updated.bordado_universidad = "Ninguna"; setUnivOtra(false); }
+      }
+
+      if (name === "tiene_bolsillo" && value === "no") {
+        updated.posicion_bolsillo = "";
+      }
+
+      return updated;
+    });
+
+    setErrors(prev => {
+      const updated = { ...prev, [name]: errorMsg };
+      
+      if (name === "modelo_bordado") {
+        updated.logoFile = "";
+        updated.bordado_universidad = ""; 
+      }
+      if (name === "contacto_nombre" && !nombresModificados) updated.bordado_nombre = "";
+      if (name === "contacto_apellido" && !nombresModificados) updated.bordado_apellido = "";
+      
+      if (name === "tiene_bolsillo" && value === "no") {
+        updated.posicion_bolsillo = "";
+      }
+
+      return updated;
+    });
+
+    setGeneralError("")
+
+    if (name === "modelo_bordado" && value !== "otro") {
+      setLogoFile(null)
     }
   }
 
@@ -223,9 +279,10 @@ export default function BordadoPublico() {
     if (form.bordado_profesion.trim().length < 2) { newErrors.bordado_profesion = "Requerido"; hasError = true; }
     if (form.bordado_universidad.trim().length < 2) { newErrors.bordado_universidad = "Requerido"; hasError = true; }
     
-    if (!form.genero) { newErrors.genero = "Debes seleccionar el género de la prenda"; hasError = true; }
-    if (form.genero === "hombre" && !form.posicion_bordado) { 
-      newErrors.posicion_bordado = "Debes elegir la posición del bordado"; hasError = true; 
+    if (!form.lado_bordado) { newErrors.lado_bordado = "Debes seleccionar el lado del bordado"; hasError = true; }
+    if (!form.tiene_bolsillo) { newErrors.tiene_bolsillo = "Debes indicar si tu top tiene bolsillo"; hasError = true; }
+    if (form.tiene_bolsillo === "si" && !form.posicion_bolsillo) { 
+      newErrors.posicion_bolsillo = "Debes elegir la posición del bordado respecto al bolsillo"; hasError = true; 
     }
 
     if (form.especificaciones.trim().length < 5) { 
@@ -233,7 +290,6 @@ export default function BordadoPublico() {
       hasError = true
     }
 
-    // Solo pedimos foto si eligieron "otro"
     if (form.modelo_bordado === "otro" && !logoFile) {
       newErrors.logoFile = "Debes adjuntar tu logo"
       hasError = true
@@ -263,17 +319,18 @@ export default function BordadoPublico() {
         }
       }
 
-      // ✅ TRUCO: Inyectamos el género y posición en las especificaciones para no tocar el backend
-      let especificacionesEnriquecidas = `[PRENDA: ${form.genero === 'hombre' ? 'Hombre' : 'Mujer'}]\n`;
-      if (form.genero === 'hombre') {
-        const posicionStr = form.posicion_bordado === 'bolsillo' ? 'En el bolsillo' : 'Arriba del bolsillo';
-        especificacionesEnriquecidas += `[POSICIÓN: ${posicionStr}]\n\n`;
+      let especificacionesEnriquecidas = `[LADO DEL BORDADO: ${form.lado_bordado === 'izquierdo' ? 'Lado Izquierdo' : 'Lado Derecho'}]\n`;
+      especificacionesEnriquecidas += `[¿TIENE BOLSILLO?: ${form.tiene_bolsillo === 'si' ? 'Sí' : 'No'}]\n`;
+      
+      if (form.tiene_bolsillo === 'si') {
+        const posicionStr = form.posicion_bolsillo === 'sobre' ? 'Sobre el bolsillo (se anula el bolsillo)' : 'Arriba del bolsillo';
+        especificacionesEnriquecidas += `[POSICIÓN BOLSILLO: ${posicionStr}]\n\n`;
       } else {
         especificacionesEnriquecidas += `\n`;
       }
+      
       especificacionesEnriquecidas += form.especificaciones.trim();
 
-      // Buscamos el nombre bonito para el correo
       const opcionSeleccionada = logoOptions.find(opt => opt.id === form.modelo_bordado);
       const nombreModeloBordado = opcionSeleccionada ? opcionSeleccionada.alt : form.modelo_bordado;
 
@@ -289,7 +346,7 @@ export default function BordadoPublico() {
         bordado_apellido: form.bordado_apellido.trim(),
         bordado_profesion: form.bordado_profesion.trim(),
         bordado_universidad: form.bordado_universidad.trim(),
-        especificaciones: especificacionesEnriquecidas, // Enviamos el texto enriquecido
+        especificaciones: especificacionesEnriquecidas,
         logo_base64: logoBase64 
       }
 
@@ -351,7 +408,6 @@ export default function BordadoPublico() {
       
       <div className="w-full max-w-3xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-10 animate-scale-in">
         
-        {/* ENCABEZADO */}
         <div className="bg-gradient-to-b from-primary/5 to-transparent p-6 text-center border-b border-border">
           <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-3 shadow-lg shadow-primary/20">
             MS
@@ -419,7 +475,6 @@ export default function BordadoPublico() {
             </h2>
             {errors.modelo_bordado && <p className="text-sm text-red-500 mb-4 font-medium flex items-center gap-1"><AlertCircle className="w-4 h-4"/> {errors.modelo_bordado}</p>}
             
-            {/* ✅ Ahora las opciones fluyen en columnas según el tamaño, ideal para las 7 tarjetas */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
               {logoOptions.map((opcion) => {
                 const isSelected = form.modelo_bordado === opcion.id;
@@ -449,13 +504,13 @@ export default function BordadoPublico() {
               })}
             </div>
 
-            {/* ADJUNTAR IMAGEN (Solo si eligen "Logo Propio") */}
+            {/* ADJUNTAR IMAGEN */}
             {form.modelo_bordado === "otro" && (
               <div className="animate-fade-in bg-muted/30 p-5 rounded-xl border border-border mt-5">
                 <h3 className="flex items-center gap-2 text-md font-bold text-foreground mb-2">
                   <Upload className="w-4 h-4 text-primary" /> Adjunta tu Logo Propio
                 </h3>
-                <p className="text-sm text-muted-foreground mb-4">Requerido en formato PNG o JPG (hasta 10MB. Se comprimirá automáticamente).</p>
+                <p className="text-sm text-muted-foreground mb-4">Se comprimirá automáticamente. (Máx 10MB)</p>
                 
                 <div className="flex items-center justify-center w-full">
                   <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${errors.logoFile ? 'border-red-400 bg-red-50/50' : logoFile ? 'border-green-400 bg-green-50/50' : 'border-primary/30 bg-primary/5 hover:bg-primary/10'}`}>
@@ -468,12 +523,12 @@ export default function BordadoPublico() {
                       ) : (
                         <>
                           <Upload className="w-8 h-8 mb-3 text-primary/60" />
-                          <p className="mb-1 text-sm text-foreground/80"><span className="font-semibold text-primary">Haz clic para subir</span> o arrastra</p>
-                          <p className="text-xs text-muted-foreground">PNG, JPG (MAX. 10MB)</p>
+                          <p className="mb-1 text-sm text-foreground/80"><span className="font-semibold text-primary">Haz clic para subir foto</span></p>
+                          <p className="text-xs text-muted-foreground">O usa tu cámara</p>
                         </>
                       )}
                     </div>
-                    <input type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleFileChange} />
+                    <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
                   </label>
                 </div>
                 {errors.logoFile && <p className="text-sm text-red-500 mt-2 font-medium flex items-center gap-1 justify-center"><AlertCircle className="w-4 h-4"/> {errors.logoFile}</p>}
@@ -486,46 +541,85 @@ export default function BordadoPublico() {
             <h2 className="flex items-center gap-2 text-lg font-bold text-foreground mb-4 border-b border-border pb-2">
               <GraduationCap className="w-5 h-5 text-primary" /> 3. Datos para el Bordado
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            {/* ✅ SECCIÓN VISUAL MEJORADA PARA MÓVILES */}
+            <div className="bg-muted/20 border border-border p-4 sm:p-6 rounded-2xl mb-6 space-y-6">
               
-              {/* ✅ NUEVA SECCIÓN DE GÉNERO */}
-              <div className="sm:col-span-2 bg-muted/20 border border-border p-4 rounded-xl">
-                <label className="block text-sm font-medium mb-3 text-foreground/80">Género de la Prenda</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {['Mujer', 'Hombre'].map((g) => (
-                    <label key={g} className={`flex items-center justify-center p-3 border-2 rounded-xl cursor-pointer transition-all ${form.genero === g.toLowerCase() ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
-                      <input type="radio" name="genero" value={g.toLowerCase()} onChange={handleChange} className="sr-only" />
-                      <span className="font-semibold text-sm">{g}</span>
-                      {form.genero === g.toLowerCase() && <CheckCircle className="ml-2 w-4 h-4 text-primary" />}
+              {/* Lado del Bordado */}
+              <div>
+                <label className="block text-base font-bold mb-3 text-foreground/90">
+                  1. ¿En qué lado del top quieres el bordado?
+                </label>
+                {/* ✅ Se apila en 1 columna en móvil, y 2 en escritorio */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    { id: 'izquierdo', src: ladoIzquierdoImg, title: 'Lado Izquierdo', desc: 'Clásico universitario y profesional' },
+                    { id: 'derecho', src: ladoDerechoImg, title: 'Lado Derecho', desc: 'Clásico institucional privado' }
+                  ].map((opt) => (
+                    <label key={opt.id} className={`relative flex flex-col items-center justify-center p-3 border-2 rounded-2xl cursor-pointer transition-all bg-white ${form.lado_bordado === opt.id ? 'border-primary ring-2 ring-primary/20 shadow-lg scale-[1.02]' : 'border-border hover:border-primary/50 hover:shadow-sm'}`}>
+                      <input type="radio" name="lado_bordado" value={opt.id} onChange={handleChange} className="sr-only" />
+                      {form.lado_bordado === opt.id && <CheckCircle className="absolute top-3 right-3 w-6 h-6 text-primary bg-white rounded-full shadow-sm" />}
+                      <img src={opt.src} alt={`Lado ${opt.id}`} className="w-full max-h-48 object-contain rounded-xl mix-blend-multiply" />
+                      {/* ✅ Texto descriptivo nativo (no en la foto) */}
+                      <div className="mt-3 text-center px-2">
+                        <p className="font-bold text-sm text-foreground">{opt.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1 leading-tight">{opt.desc}</p>
+                      </div>
                     </label>
                   ))}
                 </div>
-                {errors.genero && <p className="text-xs text-red-500 mt-2 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.genero}</p>}
-
-                {/* ✅ SUB-SECCIÓN OBLIGATORIA PARA HOMBRES */}
-                {form.genero === "hombre" && (
-                  <div className="mt-4 pt-4 border-t border-border animate-fade-in">
-                    <label className="block text-sm font-medium mb-3 text-foreground/80">
-                      Posición del Bordado (Obligatorio para hombres)
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {['En el bolsillo', 'Arriba del bolsillo'].map((pos) => {
-                        const val = pos === 'En el bolsillo' ? 'bolsillo' : 'arriba';
-                        const isSelected = form.posicion_bordado === val;
-                        return (
-                          <label key={val} className={`flex flex-col items-center justify-center p-3 border-2 rounded-xl cursor-pointer transition-all ${isSelected ? 'border-blue-500 bg-blue-50/50' : 'border-border hover:bg-muted/50'}`}>
-                            <input type="radio" name="posicion_bordado" value={val} onChange={handleChange} className="sr-only" />
-                            <span className="font-semibold text-sm text-center">{pos}</span>
-                            {isSelected && <CheckCircle className="mt-1 w-4 h-4 text-blue-500" />}
-                          </label>
-                        )
-                      })}
-                    </div>
-                    {errors.posicion_bordado && <p className="text-xs text-red-500 mt-2 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.posicion_bordado}</p>}
-                  </div>
-                )}
+                {errors.lado_bordado && <p className="text-sm text-red-500 mt-2 flex items-center gap-1 font-medium"><AlertCircle className="w-4 h-4"/> {errors.lado_bordado}</p>}
               </div>
 
+              {/* Pregunta del Bolsillo */}
+              <div className="pt-4 border-t border-border">
+                <label className="block text-base font-bold mb-3 text-foreground/90">
+                  2. ¿Tu top tiene bolsillo en ese lado?
+                </label>
+                {/* ✅ Se apila en 1 columna en móvil */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {['si', 'no'].map((opcion) => (
+                    <label key={opcion} className={`flex items-center justify-center p-4 border-2 rounded-xl cursor-pointer transition-all ${form.tiene_bolsillo === opcion ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card hover:bg-muted/50'}`}>
+                      <input type="radio" name="tiene_bolsillo" value={opcion} onChange={handleChange} className="sr-only" />
+                      <span className="font-bold uppercase tracking-wider">{opcion === 'si' ? 'Sí, tiene bolsillo' : 'No, sin bolsillo'}</span>
+                      {form.tiene_bolsillo === opcion && <CheckCircle className="ml-2 w-5 h-5" />}
+                    </label>
+                  ))}
+                </div>
+                {errors.tiene_bolsillo && <p className="text-sm text-red-500 mt-2 flex items-center gap-1 font-medium"><AlertCircle className="w-4 h-4"/> {errors.tiene_bolsillo}</p>}
+              </div>
+
+              {/* Opciones si TIENE bolsillo */}
+              {form.tiene_bolsillo === "si" && (
+                <div className="pt-4 border-t border-border animate-fade-in">
+                  <label className="block text-base font-bold mb-3 text-foreground/90">
+                    3. ¿Cómo quieres ubicar el bordado respecto al bolsillo?
+                  </label>
+                  {/* ✅ Se apila en 1 columna en móvil */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { id: 'sobre', src: sobreBolsilloImg, title: 'Sobre el bolsillo', desc: 'Si eliges esta opción el bolsillo se sella (se pierde).' },
+                      { id: 'arriba', src: arribaBolsilloImg, title: 'Arriba del bolsillo', desc: 'Sujeto a condiciones técnicas y medidas del logo.' }
+                    ].map((opt) => (
+                      <label key={opt.id} className={`relative flex flex-col items-center justify-center p-3 border-2 rounded-2xl cursor-pointer transition-all bg-white ${form.posicion_bolsillo === opt.id ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-lg scale-[1.02]' : 'border-border hover:border-blue-400 hover:shadow-sm'}`}>
+                        <input type="radio" name="posicion_bolsillo" value={opt.id} onChange={handleChange} className="sr-only" />
+                        {form.posicion_bolsillo === opt.id && <CheckCircle className="absolute top-3 right-3 w-6 h-6 text-blue-500 bg-white rounded-full shadow-sm" />}
+                        <img src={opt.src} alt={`Posición ${opt.id}`} className="w-full max-h-48 object-contain rounded-xl mix-blend-multiply" />
+                        {/* ✅ Texto descriptivo nativo (no en la foto) */}
+                        <div className="mt-3 text-center px-2">
+                          <p className="font-bold text-sm text-blue-700">{opt.title}</p>
+                          <p className="text-xs text-muted-foreground mt-1 leading-tight">{opt.desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  {errors.posicion_bolsillo && <p className="text-sm text-red-500 mt-2 flex items-center gap-1 font-medium"><AlertCircle className="w-4 h-4"/> {errors.posicion_bolsillo}</p>}
+                </div>
+              )}
+            </div>
+
+            {/* Datos de Texto para el Bordado */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre a bordar</label>
                 <input name="bordado_nombre" value={form.bordado_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_nombre)} placeholder="Ej: Juan P." />
@@ -541,11 +635,47 @@ export default function BordadoPublico() {
                 <input name="bordado_profesion" value={form.bordado_profesion} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_profesion)} placeholder="Ej: Enfermería" />
                 {errors.bordado_profesion && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_profesion}</p>}
               </div>
+              
               <div>
-                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Universidad</label>
-                <input name="bordado_universidad" value={form.bordado_universidad} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_universidad)} placeholder="Ej: U. San Sebastián" />
+                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Universidad / Institución</label>
+                <select 
+                  value={univOtra ? "Otra" : form.bordado_universidad} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "Otra") {
+                      setUnivOtra(true);
+                      setForm(prev => ({ ...prev, bordado_universidad: "" }));
+                    } else {
+                      setUnivOtra(false);
+                      setForm(prev => ({ ...prev, bordado_universidad: val }));
+                    }
+                    setErrors(prev => ({ ...prev, bordado_universidad: "" }));
+                  }} 
+                  className={getInputClass(!!errors.bordado_universidad && !univOtra)}
+                >
+                  <option value="">Selecciona una opción...</option>
+                  <option value="INACAP">INACAP</option>
+                  <option value="Universidad Austral">Universidad Austral</option>
+                  <option value="Universidad San Sebastián">Universidad San Sebastián</option>
+                  <option value="Universidad Santo Tomás">Universidad Santo Tomás</option>
+                  <option value="Santo Tomás CFT">Santo Tomás CFT</option>
+                  <option value="Ninguna">Ninguna / No aplica</option>
+                  <option value="Otra">Otra institución...</option>
+                </select>
+                
+                {univOtra && (
+                  <input 
+                    name="bordado_universidad" 
+                    value={form.bordado_universidad} 
+                    onChange={handleChange} 
+                    onBlur={handleBlur}
+                    className={`mt-2 ${getInputClass(!!errors.bordado_universidad)}`} 
+                    placeholder="Escribe tu institución..." 
+                  />
+                )}
                 {errors.bordado_universidad && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_universidad}</p>}
               </div>
+
             </div>
           </section>
 

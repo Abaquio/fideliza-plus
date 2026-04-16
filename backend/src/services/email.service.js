@@ -132,7 +132,9 @@ export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
 
     const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
-      to: 'medicalseasoncl@gmail.com', // Correo oficial
+      // ✅ AQUI SE HIZO EL CAMBIO DE DESTINATARIOS
+      to: 'bordadosmedicalseason@gmail.com', 
+      cc: 'medicalseasoncl@gmail.com',       
       subject: `Nueva Solicitud de Bordado - Folio #${contacto_folio || 'S/N'}`, 
       attachments, 
       html: `
