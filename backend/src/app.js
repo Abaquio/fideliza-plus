@@ -17,7 +17,9 @@ import publicRoutes from "./routes/public.routes.js";
 export const app = express();
 
 app.use(helmet());
-app.use(express.json());
+// ✅ Límite ampliado a 100 Megabytes para evitar cualquier bloqueo
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(morgan("dev"));
 
 // ✅ CORS robusto (local + prod)
