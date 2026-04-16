@@ -80,19 +80,23 @@ export const enviarCorreoBienvenidaStaff = async (email, nombre, password) => {
 /**
  * 3. Correo de confirmación para el CLIENTE (Bordados)
  */
-export const enviarCorreoConfirmacionBordado = async (email, nombre) => {
+export const enviarCorreoConfirmacionBordado = async (email, nombre, folio) => {
   try {
     const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
       to: email,
-      subject: 'Hemos recibido tu solicitud de bordado 🧵',
+      subject: `Hemos recibido tu solicitud de bordado (Folio #${folio || 'S/N'}) 🧵`,
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
           <h2 style="color: #059669;">¡Hola, ${nombre}! 👋</h2>
           <p>Te confirmamos que hemos recibido exitosamente tus datos para el bordado clínico.</p>
-          <div style="background-color: #F3F4F6; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0;">
-            <p style="margin: 0; font-weight: bold; color: #374151;">El equipo de Medical Season revisará tu solicitud y se pondrá en contacto contigo a la brevedad para coordinar los siguientes pasos.</p>
+          
+          <div style="background-color: #ECFDF5; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #A7F3D0; margin: 20px 0;">
+            <p style="margin: 0; color: #065F46; font-size: 14px;">Tu N° de Folio asociado es:</p>
+            <p style="margin: 5px 0 0 0; font-weight: bold; color: #047857; font-size: 24px;">${folio || 'Sin folio asignado'}</p>
           </div>
+
+          <p>El equipo de Medical Season revisará tu solicitud y se pondrá en contacto contigo a la brevedad para coordinar los siguientes pasos.</p>
           <p>¡Gracias por preferirnos!</p>
           <p>Saludos,<br><strong>Medical Season.</strong></p>
         </div>
@@ -112,7 +116,7 @@ export const enviarCorreoConfirmacionBordado = async (email, nombre) => {
 export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
   try {
     const {
-      contacto_folio, // ✅ NUEVO CAMPO RECIBIDO
+      contacto_folio, 
       contacto_nombre, contacto_apellido, contacto_rut, contacto_telefono, contacto_correo,
       modelo_bordado, bordado_nombre, bordado_apellido, bordado_profesion, bordado_universidad,
       especificaciones, logo_base64 
@@ -129,7 +133,7 @@ export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
     const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
       to: 'medicalseasoncl@gmail.com', // Correo oficial
-      subject: `Nueva Solicitud de Bordado - Folio #${contacto_folio || 'S/N'}`, // ✅ Añadido al asunto opcionalmente
+      subject: `Nueva Solicitud de Bordado - Folio #${contacto_folio || 'S/N'}`, 
       attachments, 
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
@@ -138,7 +142,8 @@ export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
           
           <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">1. Datos de Contacto</h3>
           <ul>
-            <li><strong>N° Folio:</strong> <span style="font-size: 16px; font-weight: bold; color: #059669;">${contacto_folio}</span></li> <li><strong>Nombre:</strong> ${contacto_nombre} ${contacto_apellido}</li>
+            <li><strong>N° Folio:</strong> <span style="font-size: 16px; font-weight: bold; color: #059669;">${contacto_folio}</span></li> 
+            <li><strong>Nombre:</strong> ${contacto_nombre} ${contacto_apellido}</li>
             <li><strong>RUT:</strong> ${contacto_rut}</li>
             <li><strong>Teléfono:</strong> ${contacto_telefono}</li>
             <li><strong>Correo:</strong> <a href="mailto:${contacto_correo}">${contacto_correo}</a></li>

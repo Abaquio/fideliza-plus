@@ -174,7 +174,11 @@ export const solicitarBordado = async (req, res) => {
     }
 
     // 1. Enviar correo de confirmación al cliente (sin await para no bloquear la respuesta)
-    enviarCorreoConfirmacionBordado(datosFormulario.contacto_correo, datosFormulario.contacto_nombre)
+    enviarCorreoConfirmacionBordado(
+      datosFormulario.contacto_correo, 
+      datosFormulario.contacto_nombre,
+      datosFormulario.contacto_folio // ✅ ENVIAMOS EL FOLIO
+    )
       .then(sent => {
         if(sent) console.log(`📧 Confirmación de bordado enviada a ${datosFormulario.contacto_correo}`);
         else console.warn(`⚠️ No se pudo enviar confirmación a ${datosFormulario.contacto_correo}`);
