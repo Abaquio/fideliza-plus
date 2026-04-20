@@ -365,7 +365,6 @@ export async function actualizarCliente(req, res, next) {
       payload.fuente_id = fuente_id || null;
     }
 
-    // ✅ Validación puntos_ajuste (opcional)
     let ajuste = null;
     if (puntos_ajuste !== undefined) {
       const n = Number(puntos_ajuste);
@@ -378,7 +377,6 @@ export async function actualizarCliente(req, res, next) {
       ajuste = n;
     }
 
-    // Si no hay cambios ni ajuste, no hacemos nada
     const hayCambiosCliente = Object.keys(payload).length > 0;
     const hayAjuste = ajuste !== null;
 
@@ -386,7 +384,6 @@ export async function actualizarCliente(req, res, next) {
       return res.status(400).json({ ok: false, message: "No hay campos para actualizar" });
     }
 
-    // 1) Update del cliente si corresponde
     let updatedRow = null;
     if (hayCambiosCliente) {
       const { data, error } = await supabaseAdmin
@@ -405,7 +402,6 @@ export async function actualizarCliente(req, res, next) {
 
       updatedRow = data;
     } else {
-      // si solo hay ajuste, igual necesitamos retornar el cliente
       const { data, error } = await supabaseAdmin
         .from("clientes")
         .select(
@@ -422,7 +418,6 @@ export async function actualizarCliente(req, res, next) {
       updatedRow = data;
     }
 
-    // 2) Insert movimiento de puntos (ajuste)
     if (hayAjuste) {
       const usuarioId = req.user?.perfil_id ?? req.user?.id ?? req.user?.usuario_id ?? null;
 
@@ -440,7 +435,6 @@ export async function actualizarCliente(req, res, next) {
       }
     }
 
-    // 3) Recalcular puntos_total para devolver al front
     const totalsMap = await calcularPuntosTotalesPorClientes([id]);
     const clienteMapped = mapClienteRow(updatedRow);
     const clienteOut = {
@@ -691,7 +685,6 @@ export async function eliminarFuenteClientes(req, res, next) {
       });
     }
 
-    // ✅ Búsqueda de compras protegida con chunks
     const conComprasSet = new Set();
     const chunksClientes = chunkArray(clienteIds, 100);
 
@@ -711,7 +704,6 @@ export async function eliminarFuenteClientes(req, res, next) {
     const conCompras = clienteIds.filter((cid) => conComprasSet.has(cid));
     const sinCompras = clienteIds.filter((cid) => !conComprasSet.has(cid));
 
-    // ✅ Borrado protegido con chunks
     if (sinCompras.length > 0) {
       const chunksSinCompras = chunkArray(sinCompras, 100);
       for (const chunk of chunksSinCompras) {
@@ -720,7 +712,6 @@ export async function eliminarFuenteClientes(req, res, next) {
       }
     }
 
-    // ✅ Actualización protegida con chunks
     if (conCompras.length > 0) {
       const chunksConCompras = chunkArray(conCompras, 100);
       for (const chunk of chunksConCompras) {
@@ -762,7 +753,11 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
   const validBase = [];
   const invalidos = [];
 
-  for (const r of rows) {
+  // ✅ CAMBIO 1: Bucle for tradicional para atrapar el número exacto de fila
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const numeroFila = i + 2; // +1 por índice cero, +1 por el encabezado de Excel
+    
     try {
       const rut = validarYNormalizarRut(r.rut);
       const nombres = (r.nombres || "").trim();
@@ -777,9 +772,11 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
         estado: "activo",
       });
     } catch (e) {
+      // ✅ CAMBIO 2: Guardamos la fila exacta y validamos si el RUT viene vacío
       invalidos.push({
-        rut: r.rut,
-        error: e.message || "RUT/Nombre inválido",
+        fila: numeroFila,
+        rut: r.rut || "Celda vacía",
+        error: e.message || "RUT o Nombre inválido",
       });
     }
   }
@@ -789,7 +786,6 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
 
   const existentesMap = new Map();
   if (ruts.length > 0) {
-    // ✅ Búsqueda de RUTs protegida con chunks para evitar Overflow en Excels grandes
     const chunksRuts = chunkArray(ruts, 100);
     for (const chunk of chunksRuts) {
       const { data: existentesChunk, error: exErr } = await supabaseAdmin
@@ -834,7 +830,9 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
       procesados: totalProcesados,
       validos: incoming.length,
       invalidos: invalidos.length,
-      invalidos_detalle: invalidos.slice(0, 20),
+      // ✅ CAMBIO 3: Agregamos "errores" para que el frontend lo lea perfecto y ampliamos a 50
+      errores: invalidos.slice(0, 50),
+      invalidos_detalle: invalidos.slice(0, 50), 
     };
   }
 
@@ -853,7 +851,9 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
       actualizados: ownRuts.size,
       omitidos_por_conflicto: conflictsCount,
       conflictos_detectados: conflictsCount,
-      invalidos_detalle: invalidos.slice(0, 20),
+      // ✅ CAMBIO 3
+      errores: invalidos.slice(0, 50),
+      invalidos_detalle: invalidos.slice(0, 50),
     };
   }
 
@@ -867,6 +867,8 @@ async function importarClientesDesdeUrl(driveUrl, fuente_id, { estrategia } = {}
     insertados: newRuts.size,
     actualizados: ownRuts.size + conflictsCount,
     conflictos_reemplazados: conflictsCount,
-    invalidos_detalle: invalidos.slice(0, 20),
+    // ✅ CAMBIO 3
+    errores: invalidos.slice(0, 50),
+    invalidos_detalle: invalidos.slice(0, 50),
   };
 }

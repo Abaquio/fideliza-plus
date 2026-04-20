@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { RefreshCw, Trash2, Link2, Plus, Eye, Pencil, Save, X } from "lucide-react"
+import { RefreshCw, Trash2, Link2, Plus, Eye, Pencil, Save, X, AlertTriangle, ArrowLeft } from "lucide-react"
 
 import ConfirmDialog from "../../ui/confirm"
 import ValidadoCard from "../../ui/validado"
@@ -59,6 +59,10 @@ export default function ImportarClientesModal({
   const [cancelLabel, setCancelLabel] = useState("Cancelar")
   const [pendingAction, setPendingAction] = useState(null)
   const [pendingCancelAction, setPendingCancelAction] = useState(null)
+  
+  // ✅ Estados para la vista completa de reporte de errores
+  const [reporteErrores, setReporteErrores] = useState([])
+  const [mostrarReporte, setMostrarReporte] = useState(false)
 
   const [validadoOpen, setValidadoOpen] = useState(false)
   const [validadoTitle, setValidadoTitle] = useState("Acción realizada")
@@ -72,14 +76,66 @@ export default function ImportarClientesModal({
     setValidadoOpen(true)
   }
 
-  function openConfirm({ title, message, label, cancelText, action, onCancelAction }) {
+  function openConfirm({ title, message, label, cancelText, action, onCancelAction, errores = [] }) {
     setConfirmTitle(title || "Confirmar acción")
     setConfirmMessage(message || "¿Estás seguro de continuar?")
     setConfirmLabel(label || "Confirmar")
     setCancelLabel(cancelText || "Cancelar")
     setPendingAction(() => action)
     setPendingCancelAction(() => onCancelAction)
+    
+    setReporteErrores(errores || [])
+    setMostrarReporte(false)
+    
     setConfirmOpen(true)
+  }
+
+  // ✅ Procesador inteligente de la respuesta del servidor
+  function mostrarResumenImportacion(data, tituloAccion) {
+    const invalidos = Number(data.invalidos || data.resumen?.invalidos || 0);
+    const validos = Number(data.validos || data.resumen?.validos || 0);
+    const procesados = Number(data.procesados || data.resumen?.procesados || 0);
+    
+    // Buscar los errores en cualquier posible formato que mande el backend
+    let erroresDelBackend = 
+      data.errores || 
+      data.resumen?.errores || 
+      data.detalles_invalidos || 
+      data.resumen?.detalles_invalidos || 
+      data.detalles || 
+      [];
+
+    if (!Array.isArray(erroresDelBackend)) {
+      erroresDelBackend = [String(erroresDelBackend)];
+    }
+
+    if (invalidos > 0 && erroresDelBackend.length === 0) {
+      erroresDelBackend = [{
+        fila: "?",
+        rut: "Desconocido",
+        error: "El servidor detectó datos inválidos (vacíos o formato incorrecto), pero no devolvió el detalle exacto de los RUTs."
+      }];
+    }
+
+    let msg = `Procesados: ${procesados} | Válidos: ${validos} | Inválidos: ${invalidos}\n\n`;
+
+    if (invalidos > 0) {
+      msg += `Se detectaron ${invalidos} fila(s) con problemas. Presiona 'Ver Errores' para analizar qué pasó exactamente.`;
+      
+      openConfirm({
+        title: tituloAccion,
+        message: msg,
+        label: "Ver Errores",
+        cancelText: "Cerrar",
+        errores: erroresDelBackend,
+        action: () => {
+          setMostrarReporte(true);
+        },
+        onCancelAction: () => setConfirmOpen(false)
+      });
+    } else {
+      showValidado(tituloAccion, `Importación exitosa. Se procesaron ${procesados} registros correctamente.`);
+    }
   }
 
   async function fetchFuentes() {
@@ -111,12 +167,12 @@ export default function ImportarClientesModal({
       setConfirmOpen(false)
       setPendingAction(null)
       setPendingCancelAction(null)
-
       setExpandedId(null)
       setEditingId(null)
       setEditNombre("")
       setEditUrl("")
-
+      setMostrarReporte(false)
+      setReporteErrores([])
       fetchFuentes()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,10 +223,7 @@ export default function ImportarClientesModal({
           const data = await recargarConEstrategia(fuenteId, "reemplazar")
           await fetchFuentes()
           onAfterChange?.()
-          showValidado(
-            "Importación finalizada",
-            `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
-          )
+          mostrarResumenImportacion(data, "Importación finalizada")
         } catch (e) {
           setError(e.message || "Error importando")
         } finally {
@@ -184,10 +237,7 @@ export default function ImportarClientesModal({
           const data = await recargarConEstrategia(fuenteId, "omitir")
           await fetchFuentes()
           onAfterChange?.()
-          showValidado(
-            "Importación finalizada",
-            `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
-          )
+          mostrarResumenImportacion(data, "Importación finalizada")
         } catch (e) {
           setError(e.message || "Error importando")
         } finally {
@@ -203,6 +253,8 @@ export default function ImportarClientesModal({
 
     setWorking(true)
     setError("")
+    setMostrarReporte(false)
+    
     try {
       const res = await fetch(`${API_URL}/api/clientes/fuentes`, {
         method: "POST",
@@ -241,11 +293,8 @@ export default function ImportarClientesModal({
         return
       }
 
-      if (data?.resumen) {
-        showValidado(
-          "Fuente ingresada",
-          `Importación OK — Procesados: ${data.resumen.procesados}, Válidos: ${data.resumen.validos}, Inválidos: ${data.resumen.invalidos}`
-        )
+      if (data?.resumen || data?.procesados !== undefined) {
+         mostrarResumenImportacion(data, "Fuente ingresada")
       } else {
         showValidado("Fuente ingresada", "La fuente se guardó correctamente.")
       }
@@ -282,6 +331,8 @@ export default function ImportarClientesModal({
 
     setWorking(true)
     setError("")
+    setMostrarReporte(false) 
+
     try {
       const res = await fetch(`${API_URL}/api/clientes/fuentes/${source.id}/recargar`, {
         method: "POST",
@@ -306,10 +357,8 @@ export default function ImportarClientesModal({
       await fetchFuentes()
       onAfterChange?.()
 
-      showValidado(
-        "Fuente recargada",
-        `Importación OK — Procesados: ${data.procesados}, Válidos: ${data.validos}, Inválidos: ${data.invalidos}`
-      )
+      mostrarResumenImportacion(data, "Fuente recargada")
+
     } catch (e) {
       setError(e.message || "Error recargando fuente")
     } finally {
@@ -317,7 +366,6 @@ export default function ImportarClientesModal({
     }
   }
 
-  // ✅ NUEVO: elimina fuente con lógica mixta (backend devuelve resumen)
   async function doEliminarFuente(source) {
     setWorking(true)
     setError("")
@@ -484,269 +532,324 @@ export default function ImportarClientesModal({
     >
       <div
         className="
-          bg-card border border-border rounded-xl p-6 w-full max-w-3xl animate-scale-in
+          bg-card border border-border rounded-xl p-6 w-full max-w-4xl animate-scale-in
           max-h-[90vh] overflow-y-auto overscroll-contain
         "
       >
-        <h2 className="text-2xl font-bold mb-2">Importar Clientes</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Agrega fuentes (Google Sheets/Drive), recárgalas cuando cambien y mantén tu base actualizada.
-        </p>
-
-        {error && (
-          <div className="mb-4 bg-destructive/10 border border-destructive/30 text-destructive rounded-lg p-3 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-4">
-          <div className="bg-muted/40 border border-border rounded-lg p-3 space-y-3">
-            <div>
-              <label className="block text-sm font-medium mb-2">Nombre de la fuente</label>
-              <input
-                value={nombre}
-                onChange={(e) => {
-                  setNombre(e.target.value)
-                  if (error) setError("")
-                }}
-                placeholder="Ej: Universidad X / Local Centro"
-                className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              {nombre.trim() && nombreDuplicado && (
-                <p className="mt-1 text-xs text-destructive">
-                  Ya existe una fuente con ese nombre (no se permiten nombres repetidos).
-                </p>
-              )}
+        {/* ✅ VISTA 1: REPORTE DE ERRORES A PANTALLA COMPLETA */}
+        {mostrarReporte ? (
+          <div className="animate-fade-in space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-4 mb-4">
+              <h2 className="text-2xl font-bold text-destructive flex items-center gap-2">
+                <AlertTriangle className="w-7 h-7" />
+                Reporte de Errores ({reporteErrores.length})
+              </h2>
+              <button 
+                onClick={() => setMostrarReporte(false)} 
+                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-medium rounded-lg transition-colors flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" /> Volver
+              </button>
             </div>
+            
+            <p className="text-sm text-muted-foreground mb-4">
+              Estas filas no pudieron ser importadas. Corrige estos datos en tu archivo de Excel e intenta recargar la fuente nuevamente.
+            </p>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Enlace de Google Drive / Sheets</label>
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://docs.google.com/spreadsheets/d/..."
-                className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Debe estar como “Cualquiera con el enlace puede ver”.
-              </p>
+            <div className="border border-destructive/20 rounded-xl overflow-hidden shadow-sm">
+              <div className="max-h-[60vh] overflow-y-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-destructive/10 text-destructive sticky top-0 z-10 shadow-sm">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold w-24">N° Fila</th>
+                      <th className="px-4 py-3 font-semibold w-48">Dato / RUT</th>
+                      <th className="px-4 py-3 font-semibold">Motivo del rechazo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {reporteErrores.map((err, i) => {
+                      const isObj = typeof err === 'object' && err !== null;
+                      const fila = isObj ? (err.fila || err.row || err.index || "-") : "-";
+                      const dato = isObj ? (err.rut || err.email || err.identificador || "-") : "-";
+                      const motivo = isObj ? (err.error || err.mensaje || err.detalle || err.motivo || JSON.stringify(err)) : String(err);
+
+                      return (
+                        <tr key={i} className="hover:bg-muted/50 transition-colors bg-card">
+                          <td className="px-4 py-3 font-medium text-muted-foreground text-center">{fila}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-foreground bg-muted/30">{dato}</td>
+                          <td className="px-4 py-3 text-destructive font-medium">{motivo}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-
-            <button
-              onClick={handleCrearFuente}
-              disabled={disabled || !canAdd}
-              className="w-full px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              {working ? "Guardando..." : "Guardar e importar"}
-            </button>
           </div>
+        ) : (
+          /* ✅ VISTA 2: FORMULARIO NORMAL DE IMPORTACIÓN */
+          <>
+            <h2 className="text-2xl font-bold mb-2">Importar Clientes</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Agrega fuentes (Google Sheets/Drive), recárgalas cuando cambien y mantén tu base actualizada.
+            </p>
 
-          <div className="bg-muted/40 border border-border rounded-lg p-3 text-sm text-muted-foreground">
-            <p className="font-medium mb-1">Formato esperado del Excel/Sheet:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>rut</li>
-              <li>nombres</li>
-              <li>apellidos</li>
-              <li>email</li>
-              <li>telefono</li>
-            </ul>
-          </div>
-
-          <div className="bg-muted/40 border border-border rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium">Fuentes guardadas</p>
-              <p className="text-xs text-muted-foreground">
-                {loadingSources ? "Cargando..." : `${sources.length} fuente(s)`}
-              </p>
-            </div>
-
-            {loadingSources ? (
-              <p className="text-sm text-muted-foreground">Cargando fuentes...</p>
-            ) : sources.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aún no has agregado fuentes. Completa nombre + enlace y presiona “Guardar e importar”.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {sources.map((s) => {
-                  const internal = isInternalSource(s)
-                  const expanded = expandedId === s.id
-                  const editing = editingId === s.id
-
-                  return (
-                    <div key={s.id} className="bg-card border border-border rounded-lg p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Link2 className="w-4 h-4 text-muted-foreground" />
-                            <p className="text-sm font-medium truncate">{s.nombre}</p>
-
-                            {internal && (
-                              <span className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
-                                Interna
-                              </span>
-                            )}
-                          </div>
-
-                          <p className="text-xs text-muted-foreground truncate mt-1">{s.url}</p>
-
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            Última recarga: {formatWhen(s.ultima_recarga_en)}
-                          </p>
-                        </div>
-
-                        <div className="flex gap-2 shrink-0">
-                          <button
-                            onClick={() => toggleExpand(s)}
-                            disabled={disabled}
-                            className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-muted hover:bg-muted/80 border-border"
-                            title={expanded ? "Cerrar detalles" : "Ver detalles"}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            onClick={() => handleRecargar(s)}
-                            disabled={disabled || internal}
-                            className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary"
-                            title={internal ? "Fuente interna (no recargable)" : "Recargar fuente"}
-                          >
-                            <RefreshCw className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            onClick={() => handleEliminar(s)}
-                            disabled={disabled || internal}
-                            className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-destructive/10 hover:bg-destructive/20 border-destructive/30 text-destructive"
-                            title={internal ? "Fuente interna (no eliminable)" : "Eliminar fuente"}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {expanded && (
-                        <div className="mt-3 pt-3 border-t border-border space-y-3">
-                          {!editing ? (
-                            <>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div className="bg-muted/40 border border-border rounded-lg p-3">
-                                  <p className="text-xs text-muted-foreground mb-1">Nombre</p>
-                                  <p className="text-sm font-medium break-words">{s.nombre}</p>
-                                </div>
-
-                                <div className="bg-muted/40 border border-border rounded-lg p-3">
-                                  <p className="text-xs text-muted-foreground mb-1">Enlace</p>
-                                  <p className="text-sm font-medium break-all">{s.url}</p>
-                                  <button
-                                    type="button"
-                                    onClick={() => copyToClipboard(s.url)}
-                                    className="mt-2 text-xs px-3 py-1 rounded-md bg-muted hover:bg-muted/80 border border-border transition-colors"
-                                  >
-                                    Copiar link
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-[11px] text-muted-foreground">
-                                  Última recarga: {formatWhen(s.ultima_recarga_en)}
-                                </p>
-
-                                <button
-                                  onClick={() => startEdit(s)}
-                                  disabled={disabled || internal}
-                                  className="px-4 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary flex items-center gap-2"
-                                  title={internal ? "Fuente interna (no editable)" : "Editar fuente"}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                  Editar
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs text-muted-foreground mb-2">Nombre</label>
-                                  <input
-                                    value={editNombre}
-                                    onChange={(e) => {
-                                      setEditNombre(e.target.value)
-                                      if (error) setError("")
-                                    }}
-                                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                                  />
-                                  {editNombre.trim() && editNombreDuplicado && (
-                                    <p className="mt-1 text-xs text-destructive">
-                                      Ya existe otra fuente con ese nombre.
-                                    </p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <label className="block text-xs text-muted-foreground mb-2">Enlace</label>
-                                  <input
-                                    value={editUrl}
-                                    onChange={(e) => {
-                                      setEditUrl(e.target.value)
-                                      if (error) setError("")
-                                    }}
-                                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                                  />
-                                  <p className="mt-1 text-[11px] text-muted-foreground">
-                                    Debe ser de Google Drive/Sheets.
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex gap-2 justify-end">
-                                <button
-                                  onClick={cancelEdit}
-                                  disabled={disabled}
-                                  className="px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 border border-border transition-colors flex items-center gap-2 disabled:opacity-60"
-                                >
-                                  <X className="w-4 h-4" />
-                                  Cancelar
-                                </button>
-
-                                <button
-                                  onClick={() => pedirGuardarEdicion(s)}
-                                  disabled={
-                                    disabled ||
-                                    !editNombre.trim() ||
-                                    !editUrl.trim() ||
-                                    editNombreDuplicado
-                                  }
-                                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                  <Save className="w-4 h-4" />
-                                  Guardar
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+            {error && (
+              <div className="mb-4 bg-destructive/10 border border-destructive/30 text-destructive rounded-lg p-3 text-sm">
+                {error}
               </div>
             )}
-          </div>
 
-          <div className="flex gap-3 pt-2">
-            <button
-              onClick={onClose}
-              className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors"
-              disabled={disabled}
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
+            <div className="space-y-4">
+              <div className="bg-muted/40 border border-border rounded-lg p-3 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Nombre de la fuente</label>
+                  <input
+                    value={nombre}
+                    onChange={(e) => {
+                      setNombre(e.target.value)
+                      if (error) setError("")
+                    }}
+                    placeholder="Ej: Universidad X / Local Centro"
+                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  {nombre.trim() && nombreDuplicado && (
+                    <p className="mt-1 text-xs text-destructive">
+                      Ya existe una fuente con ese nombre (no se permiten nombres repetidos).
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Enlace de Google Drive / Sheets</label>
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Debe estar como “Cualquiera con el enlace puede ver”.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleCrearFuente}
+                  disabled={disabled || !canAdd}
+                  className="w-full px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  {working ? "Guardando..." : "Guardar e importar"}
+                </button>
+              </div>
+
+              <div className="bg-muted/40 border border-border rounded-lg p-3 text-sm text-muted-foreground">
+                <p className="font-medium mb-1">Formato esperado del Excel/Sheet:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>rut</li>
+                  <li>nombres</li>
+                  <li>apellidos</li>
+                  <li>email</li>
+                  <li>telefono</li>
+                </ul>
+              </div>
+
+              <div className="bg-muted/40 border border-border rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">Fuentes guardadas</p>
+                  <p className="text-xs text-muted-foreground">
+                    {loadingSources ? "Cargando..." : `${sources.length} fuente(s)`}
+                  </p>
+                </div>
+
+                {loadingSources ? (
+                  <p className="text-sm text-muted-foreground">Cargando fuentes...</p>
+                ) : sources.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aún no has agregado fuentes. Completa nombre + enlace y presiona “Guardar e importar”.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {sources.map((s) => {
+                      const internal = isInternalSource(s)
+                      const expanded = expandedId === s.id
+                      const editing = editingId === s.id
+
+                      return (
+                        <div key={s.id} className="bg-card border border-border rounded-lg p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <Link2 className="w-4 h-4 text-muted-foreground" />
+                                <p className="text-sm font-medium truncate">{s.nombre}</p>
+
+                                {internal && (
+                                  <span className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
+                                    Interna
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="text-xs text-muted-foreground truncate mt-1">{s.url}</p>
+
+                              <p className="text-[11px] text-muted-foreground mt-1">
+                                Última recarga: {formatWhen(s.ultima_recarga_en)}
+                              </p>
+                            </div>
+
+                            <div className="flex gap-2 shrink-0">
+                              <button
+                                onClick={() => toggleExpand(s)}
+                                disabled={disabled}
+                                className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-muted hover:bg-muted/80 border-border"
+                                title={expanded ? "Cerrar detalles" : "Ver detalles"}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+
+                              <button
+                                onClick={() => handleRecargar(s)}
+                                disabled={disabled || internal}
+                                className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary"
+                                title={internal ? "Fuente interna (no recargable)" : "Recargar fuente"}
+                              >
+                                <RefreshCw className="w-4 h-4" />
+                              </button>
+
+                              <button
+                                onClick={() => handleEliminar(s)}
+                                disabled={disabled || internal}
+                                className="px-3 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-destructive/10 hover:bg-destructive/20 border-destructive/30 text-destructive"
+                                title={internal ? "Fuente interna (no eliminable)" : "Eliminar fuente"}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {expanded && (
+                            <div className="mt-3 pt-3 border-t border-border space-y-3">
+                              {!editing ? (
+                                <>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="bg-muted/40 border border-border rounded-lg p-3">
+                                      <p className="text-xs text-muted-foreground mb-1">Nombre</p>
+                                      <p className="text-sm font-medium break-words">{s.nombre}</p>
+                                    </div>
+
+                                    <div className="bg-muted/40 border border-border rounded-lg p-3">
+                                      <p className="text-xs text-muted-foreground mb-1">Enlace</p>
+                                      <p className="text-sm font-medium break-all">{s.url}</p>
+                                      <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(s.url)}
+                                        className="mt-2 text-xs px-3 py-1 rounded-md bg-muted hover:bg-muted/80 border border-border transition-colors"
+                                      >
+                                        Copiar link
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[11px] text-muted-foreground">
+                                      Última recarga: {formatWhen(s.ultima_recarga_en)}
+                                    </p>
+
+                                    <button
+                                      onClick={() => startEdit(s)}
+                                      disabled={disabled || internal}
+                                      className="px-4 py-2 rounded-lg transition-colors border disabled:opacity-60 disabled:cursor-not-allowed bg-primary/10 hover:bg-primary/20 border-primary/30 text-primary flex items-center gap-2"
+                                      title={internal ? "Fuente interna (no editable)" : "Editar fuente"}
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                      Editar
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-xs text-muted-foreground mb-2">Nombre</label>
+                                      <input
+                                        value={editNombre}
+                                        onChange={(e) => {
+                                          setEditNombre(e.target.value)
+                                          if (error) setError("")
+                                        }}
+                                        className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                      />
+                                      {editNombre.trim() && editNombreDuplicado && (
+                                        <p className="mt-1 text-xs text-destructive">
+                                          Ya existe otra fuente con ese nombre.
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs text-muted-foreground mb-2">Enlace</label>
+                                      <input
+                                        value={editUrl}
+                                        onChange={(e) => {
+                                          setEditUrl(e.target.value)
+                                          if (error) setError("")
+                                        }}
+                                        className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                      />
+                                      <p className="mt-1 text-[11px] text-muted-foreground">
+                                        Debe ser de Google Drive/Sheets.
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex gap-2 justify-end">
+                                    <button
+                                      onClick={cancelEdit}
+                                      disabled={disabled}
+                                      className="px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 border border-border transition-colors flex items-center gap-2 disabled:opacity-60"
+                                    >
+                                      <X className="w-4 h-4" />
+                                      Cancelar
+                                    </button>
+
+                                    <button
+                                      onClick={() => pedirGuardarEdicion(s)}
+                                      disabled={
+                                        disabled ||
+                                        !editNombre.trim() ||
+                                        !editUrl.trim() ||
+                                        editNombreDuplicado
+                                      }
+                                      className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                      <Save className="w-4 h-4" />
+                                      Guardar
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={onClose}
+                  className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                  disabled={disabled}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <ConfirmDialog
