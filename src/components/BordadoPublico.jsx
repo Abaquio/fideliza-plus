@@ -620,16 +620,26 @@ export default function BordadoPublico() {
             {/* ✅ DATOS DE TEXTO CON SELECTORES VISUALES */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               
-              {/* Nombre + Tipo de Letra Visual */}
-              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
-                <div>
-                  <label className="block text-sm font-bold mb-1.5 text-foreground">Nombre a bordar</label>
-                  <input name="bordado_nombre" value={form.bordado_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_nombre)} placeholder="Ej: Juan" />
-                  {errors.bordado_nombre && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_nombre}</p>}
+              {/* ✅ BLOQUE UNIFICADO: Nombre, Apellido y su Tipografía */}
+              <div className="sm:col-span-2 space-y-4 bg-muted/10 p-4 rounded-xl border border-border/50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold mb-1.5 text-foreground">Nombre a bordar</label>
+                    <input name="bordado_nombre" value={form.bordado_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_nombre)} placeholder="Ej: Juan" />
+                    {errors.bordado_nombre && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_nombre}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold mb-1.5 text-foreground">Apellido a bordar</label>
+                    <input name="bordado_apellido" value={form.bordado_apellido} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_apellido)} placeholder="Ej: Pérez" />
+                    {errors.bordado_apellido && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_apellido}</p>}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Tipo de Letra (Nombre y Apellido)</label>
-                  <div className="flex gap-2">
+                
+                <div className="pt-2 border-t border-border/50">
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
+                    Tipo de Letra (Aplica para Nombre y Apellido)
+                  </label>
+                  <div className="flex gap-3 sm:max-w-md">
                     <label className={`flex-1 border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${form.tipo_letra_nombre === 'Arial' ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border hover:bg-muted bg-card'} ${errors.tipo_letra_nombre ? 'border-red-300' : ''}`}>
                       <input type="radio" name="tipo_letra_nombre" value="Arial" checked={form.tipo_letra_nombre === 'Arial'} onChange={handleChange} className="sr-only" />
                       <span className="block font-sans text-base font-semibold text-foreground">Arial</span>
@@ -646,24 +656,15 @@ export default function BordadoPublico() {
                 </div>
               </div>
 
-              {/* Apellido */}
-              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
-                <div>
-                  <label className="block text-sm font-bold mb-1.5 text-foreground">Apellido a bordar</label>
-                  <input name="bordado_apellido" value={form.bordado_apellido} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_apellido)} placeholder="Ej: Pérez" />
-                  {errors.bordado_apellido && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_apellido}</p>}
-                </div>
-              </div>
-
               {/* Profesión + Tipo de Letra Visual */}
-              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
+              <div className="space-y-3 bg-muted/10 p-4 rounded-xl border border-border/50 flex flex-col justify-between">
                 <div>
                   <label className="block text-sm font-bold mb-1.5 text-foreground">Profesión / Carrera</label>
                   <input name="bordado_profesion" value={form.bordado_profesion} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_profesion)} placeholder="Ej: Enfermería" />
                   {errors.bordado_profesion && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_profesion}</p>}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Tipo de Letra (Profesión)</label>
+                <div className="pt-2 border-t border-border/50">
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Tipo de Letra (Profesión)</label>
                   <div className="flex gap-2">
                     <label className={`flex-1 border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${form.tipo_letra_profesion === 'Arial' ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border hover:bg-muted bg-card'} ${errors.tipo_letra_profesion ? 'border-red-300' : ''}`}>
                       <input type="radio" name="tipo_letra_profesion" value="Arial" checked={form.tipo_letra_profesion === 'Arial'} onChange={handleChange} className="sr-only" />
@@ -681,7 +682,7 @@ export default function BordadoPublico() {
               </div>
               
               {/* Universidad + Color de Hilo Visual */}
-              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50 flex flex-col justify-between">
+              <div className="space-y-3 bg-muted/10 p-4 rounded-xl border border-border/50 flex flex-col justify-between">
                 <div>
                   <label className="block text-sm font-bold mb-1.5 text-foreground">Universidad / Institución</label>
                   <select 
@@ -721,8 +722,8 @@ export default function BordadoPublico() {
                   {errors.bordado_universidad && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_universidad}</p>}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold mb-2 mt-2 text-muted-foreground uppercase tracking-wider">Color del Hilo (Textos)</label>
+                <div className="pt-2 border-t border-border/50">
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Color del Hilo (Textos)</label>
                   <div className={`flex gap-4 p-2 rounded-xl bg-card border-2 ${errors.color_hilo ? 'border-red-300 bg-red-50/30' : 'border-transparent'}`}>
                     {[
                       { val: 'Verde', hex: '#059669', label: 'Verde' },
