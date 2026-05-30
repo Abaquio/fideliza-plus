@@ -647,7 +647,6 @@ export default function BordadoPublico() {
                     </label>
                     <label className={`flex-1 border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${form.tipo_letra_nombre === 'Cursiva' ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border hover:bg-muted bg-card'} ${errors.tipo_letra_nombre ? 'border-red-300' : ''}`}>
                       <input type="radio" name="tipo_letra_nombre" value="Cursiva" checked={form.tipo_letra_nombre === 'Cursiva'} onChange={handleChange} className="sr-only" />
-                      {/* Usamos fuentes genéricas seguras para que se vea como cursiva en cualquier PC/Celular */}
                       <span className="block text-[1.15rem] leading-tight text-foreground" style={{ fontFamily: "cursive, 'Brush Script MT', 'Lucida Handwriting'" }}>Cursiva</span>
                       <span className="block text-[10px] text-muted-foreground mt-0.5">Ligada</span>
                     </label>
@@ -681,8 +680,8 @@ export default function BordadoPublico() {
                 </div>
               </div>
               
-              {/* Universidad + Color de Hilo Visual */}
-              <div className="space-y-3 bg-muted/10 p-4 rounded-xl border border-border/50 flex flex-col justify-between">
+              {/* Universidad (Separada del color del hilo) */}
+              <div className="space-y-3 bg-muted/10 p-4 rounded-xl border border-border/50 flex flex-col">
                 <div>
                   <label className="block text-sm font-bold mb-1.5 text-foreground">Universidad / Institución</label>
                   <select 
@@ -721,19 +720,24 @@ export default function BordadoPublico() {
                   )}
                   {errors.bordado_universidad && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_universidad}</p>}
                 </div>
+              </div>
 
-                <div className="pt-2 border-t border-border/50">
-                  <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Color del Hilo (Textos)</label>
-                  <div className={`flex gap-4 p-2 rounded-xl bg-card border-2 ${errors.color_hilo ? 'border-red-300 bg-red-50/30' : 'border-transparent'}`}>
+              {/* ✅ NUEVO BLOQUE: Color de Hilo Visual (Separado y ocupa todo el ancho inferior) */}
+              <div className="sm:col-span-2 space-y-3 bg-muted/10 p-4 rounded-xl border border-border/50 flex flex-col items-center justify-center">
+                <div className="text-center w-full">
+                  <label className="block text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wider">
+                    Color del Hilo (Aplica para todos los textos)
+                  </label>
+                  <div className={`flex justify-center gap-6 p-3 rounded-xl bg-card border-2 mx-auto max-w-sm ${errors.color_hilo ? 'border-red-300 bg-red-50/30' : 'border-transparent'}`}>
                     {[
                       { val: 'Verde', hex: '#059669', label: 'Verde' },
                       { val: 'Blanco', hex: '#FFFFFF', label: 'Blanco', border: true },
                       { val: 'Negro', hex: '#111827', label: 'Negro' }
                     ].map(color => (
-                      <label key={color.val} className="flex-1 flex flex-col items-center gap-1.5 cursor-pointer group">
+                      <label key={color.val} className="flex flex-col items-center gap-1.5 cursor-pointer group">
                          <input type="radio" name="color_hilo" value={color.val} checked={form.color_hilo === color.val} onChange={handleChange} className="sr-only" />
                          <div 
-                           className={`w-8 h-8 rounded-full transition-all duration-200 shadow-sm ${form.color_hilo === color.val ? 'ring-2 ring-offset-2 ring-primary scale-110' : 'group-hover:scale-110'} ${color.border ? 'border border-gray-300' : ''}`} 
+                           className={`w-10 h-10 rounded-full transition-all duration-200 shadow-sm ${form.color_hilo === color.val ? 'ring-2 ring-offset-2 ring-primary scale-110' : 'group-hover:scale-110'} ${color.border ? 'border border-gray-300' : ''}`} 
                            style={{ backgroundColor: color.hex }}
                          />
                          <span className={`text-[11px] font-bold ${form.color_hilo === color.val ? 'text-primary' : 'text-muted-foreground'}`}>
@@ -742,7 +746,7 @@ export default function BordadoPublico() {
                       </label>
                     ))}
                   </div>
-                  {errors.color_hilo && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.color_hilo}</p>}
+                  {errors.color_hilo && <p className="text-xs text-red-500 mt-2 flex items-center justify-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.color_hilo}</p>}
                 </div>
               </div>
 
