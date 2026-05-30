@@ -119,6 +119,7 @@ export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
       contacto_folio, 
       contacto_nombre, contacto_apellido, contacto_rut, contacto_telefono, contacto_correo,
       modelo_bordado, bordado_nombre, bordado_apellido, bordado_profesion, bordado_universidad,
+      lado_bordado, tiene_bolsillo, posicion_bolsillo, tipo_letra_nombre, tipo_letra_profesion, color_hilo,
       especificaciones, logo_base64 
     } = datos;
 
@@ -132,7 +133,6 @@ export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
 
     const info = await transporter.sendMail({
       from: EMAIL_REMITENTE,
-      // ✅ AQUI SE HIZO EL CAMBIO DE DESTINATARIOS
       to: 'bordadosmedicalseason@gmail.com', 
       cc: 'medicalseasoncl@gmail.com',       
       subject: `Nueva Solicitud de Bordado - Folio #${contacto_folio || 'S/N'}`, 
@@ -152,12 +152,19 @@ export const enviarCorreoNuevaSolicitudBordado = async (datos) => {
           </ul>
 
           <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">2. Detalles del Bordado</h3>
+          
+          <div style="background-color: #f8fafc; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #e2e8f0;">
+            <p style="margin: 0 0 5px 0;"><strong>Lado del Top:</strong> ${lado_bordado}</p>
+            <p style="margin: 0 0 5px 0;"><strong>¿Tiene Bolsillo?:</strong> ${tiene_bolsillo}</p>
+            ${tiene_bolsillo === 'Sí' ? `<p style="margin: 0; color: #0369a1;"><strong>Posición del bordado:</strong> ${posicion_bolsillo}</p>` : ''}
+          </div>
+
           <ul>
             <li><strong>Modelo/Tipo:</strong> ${modelo_bordado}</li>
-            <li><strong>Nombre a bordar:</strong> ${bordado_nombre}</li>
-            <li><strong>Apellido a bordar:</strong> ${bordado_apellido}</li>
-            <li><strong>Profesión/Carrera:</strong> ${bordado_profesion}</li>
+            <li><strong>Nombre a bordar:</strong> ${bordado_nombre} ${bordado_apellido} <br/> <span style="color:#666; font-size:13px;">(Tipografía: ${tipo_letra_nombre})</span></li>
+            <li><strong>Profesión/Carrera:</strong> ${bordado_profesion} <br/> <span style="color:#666; font-size:13px;">(Tipografía: ${tipo_letra_profesion})</span></li>
             <li><strong>Universidad:</strong> ${bordado_universidad}</li>
+            <li style="margin-top: 10px;"><strong>Color del Hilo:</strong> <span style="font-weight:bold;">${color_hilo}</span></li>
           </ul>
 
           <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">3. Especificaciones Adicionales</h3>

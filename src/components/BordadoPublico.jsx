@@ -104,6 +104,9 @@ export default function BordadoPublico() {
     lado_bordado: "",      
     tiene_bolsillo: "",    
     posicion_bolsillo: "", 
+    tipo_letra_nombre: "",    // ✅ NUEVO
+    tipo_letra_profesion: "", // ✅ NUEVO
+    color_hilo: "",           // ✅ NUEVO
     especificaciones: "" 
   })
 
@@ -124,6 +127,9 @@ export default function BordadoPublico() {
     lado_bordado: "",
     tiene_bolsillo: "",
     posicion_bolsillo: "",
+    tipo_letra_nombre: "",    // ✅ NUEVO
+    tipo_letra_profesion: "", // ✅ NUEVO
+    color_hilo: "",           // ✅ NUEVO
     especificaciones: "",
     logoFile: ""
   })
@@ -285,8 +291,13 @@ export default function BordadoPublico() {
       newErrors.posicion_bolsillo = "Debes elegir la posición del bordado respecto al bolsillo"; hasError = true; 
     }
 
-    if (form.especificaciones.trim().length < 5) { 
-      newErrors.especificaciones = "Las especificaciones son obligatorias para poder realizar el bordado"
+    // ✅ Nuevas validaciones
+    if (!form.tipo_letra_nombre) { newErrors.tipo_letra_nombre = "Requerido"; hasError = true; }
+    if (!form.tipo_letra_profesion) { newErrors.tipo_letra_profesion = "Requerido"; hasError = true; }
+    if (!form.color_hilo) { newErrors.color_hilo = "Requerido"; hasError = true; }
+
+    if (form.especificaciones.trim().length > 0 && form.especificaciones.trim().length < 5) { 
+      newErrors.especificaciones = "Por favor, detalla un poco más tu solicitud"
       hasError = true
     }
 
@@ -319,21 +330,10 @@ export default function BordadoPublico() {
         }
       }
 
-      let especificacionesEnriquecidas = `[LADO DEL BORDADO: ${form.lado_bordado === 'izquierdo' ? 'Lado Izquierdo' : 'Lado Derecho'}]\n`;
-      especificacionesEnriquecidas += `[¿TIENE BOLSILLO?: ${form.tiene_bolsillo === 'si' ? 'Sí' : 'No'}]\n`;
-      
-      if (form.tiene_bolsillo === 'si') {
-        const posicionStr = form.posicion_bolsillo === 'sobre' ? 'Sobre el bolsillo (se anula el bolsillo)' : 'Arriba del bolsillo';
-        especificacionesEnriquecidas += `[POSICIÓN BOLSILLO: ${posicionStr}]\n\n`;
-      } else {
-        especificacionesEnriquecidas += `\n`;
-      }
-      
-      especificacionesEnriquecidas += form.especificaciones.trim();
-
       const opcionSeleccionada = logoOptions.find(opt => opt.id === form.modelo_bordado);
       const nombreModeloBordado = opcionSeleccionada ? opcionSeleccionada.alt : form.modelo_bordado;
 
+      // ✅ Enviamos todo estructurado al backend
       const payload = {
         contacto_folio: form.contacto_folio.trim(), 
         contacto_nombre: form.contacto_nombre.trim(),
@@ -346,7 +346,13 @@ export default function BordadoPublico() {
         bordado_apellido: form.bordado_apellido.trim(),
         bordado_profesion: form.bordado_profesion.trim(),
         bordado_universidad: form.bordado_universidad.trim(),
-        especificaciones: especificacionesEnriquecidas,
+        lado_bordado: form.lado_bordado === 'izquierdo' ? 'Lado Izquierdo' : 'Lado Derecho',
+        tiene_bolsillo: form.tiene_bolsillo === 'si' ? 'Sí' : 'No',
+        posicion_bolsillo: form.tiene_bolsillo === 'si' ? (form.posicion_bolsillo === 'sobre' ? 'Sobre el bolsillo' : 'Arriba del bolsillo') : 'N/A',
+        tipo_letra_nombre: form.tipo_letra_nombre,
+        tipo_letra_profesion: form.tipo_letra_profesion,
+        color_hilo: form.color_hilo,
+        especificaciones: form.especificaciones.trim(),
         logo_base64: logoBase64 
       }
 
@@ -542,7 +548,7 @@ export default function BordadoPublico() {
               <GraduationCap className="w-5 h-5 text-primary" /> 3. Datos para el Bordado
             </h2>
 
-            {/* ✅ SECCIÓN VISUAL MEJORADA PARA MÓVILES */}
+            {/* SECCIÓN VISUAL: LADO Y BOLSILLO */}
             <div className="bg-muted/20 border border-border p-4 sm:p-6 rounded-2xl mb-6 space-y-6">
               
               {/* Lado del Bordado */}
@@ -550,7 +556,6 @@ export default function BordadoPublico() {
                 <label className="block text-base font-bold mb-3 text-foreground/90">
                   1. ¿En qué lado del top quieres el bordado?
                 </label>
-                {/* ✅ Se apila en 1 columna en móvil, y 2 en escritorio */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { id: 'izquierdo', src: ladoIzquierdoImg, title: 'Lado Izquierdo', desc: 'Clásico universitario y profesional' },
@@ -560,7 +565,6 @@ export default function BordadoPublico() {
                       <input type="radio" name="lado_bordado" value={opt.id} onChange={handleChange} className="sr-only" />
                       {form.lado_bordado === opt.id && <CheckCircle className="absolute top-3 right-3 w-6 h-6 text-primary bg-white rounded-full shadow-sm" />}
                       <img src={opt.src} alt={`Lado ${opt.id}`} className="w-full max-h-48 object-contain rounded-xl mix-blend-multiply" />
-                      {/* ✅ Texto descriptivo nativo (no en la foto) */}
                       <div className="mt-3 text-center px-2">
                         <p className="font-bold text-sm text-foreground">{opt.title}</p>
                         <p className="text-xs text-muted-foreground mt-1 leading-tight">{opt.desc}</p>
@@ -576,7 +580,6 @@ export default function BordadoPublico() {
                 <label className="block text-base font-bold mb-3 text-foreground/90">
                   2. ¿Tu top tiene bolsillo en ese lado?
                 </label>
-                {/* ✅ Se apila en 1 columna en móvil */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {['si', 'no'].map((opcion) => (
                     <label key={opcion} className={`flex items-center justify-center p-4 border-2 rounded-xl cursor-pointer transition-all ${form.tiene_bolsillo === opcion ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card hover:bg-muted/50'}`}>
@@ -595,7 +598,6 @@ export default function BordadoPublico() {
                   <label className="block text-base font-bold mb-3 text-foreground/90">
                     3. ¿Cómo quieres ubicar el bordado respecto al bolsillo?
                   </label>
-                  {/* ✅ Se apila en 1 columna en móvil */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
                       { id: 'sobre', src: sobreBolsilloImg, title: 'Sobre el bolsillo', desc: 'Si eliges esta opción el bolsillo se sella (se pierde).' },
@@ -605,7 +607,6 @@ export default function BordadoPublico() {
                         <input type="radio" name="posicion_bolsillo" value={opt.id} onChange={handleChange} className="sr-only" />
                         {form.posicion_bolsillo === opt.id && <CheckCircle className="absolute top-3 right-3 w-6 h-6 text-blue-500 bg-white rounded-full shadow-sm" />}
                         <img src={opt.src} alt={`Posición ${opt.id}`} className="w-full max-h-48 object-contain rounded-xl mix-blend-multiply" />
-                        {/* ✅ Texto descriptivo nativo (no en la foto) */}
                         <div className="mt-3 text-center px-2">
                           <p className="font-bold text-sm text-blue-700">{opt.title}</p>
                           <p className="text-xs text-muted-foreground mt-1 leading-tight">{opt.desc}</p>
@@ -618,62 +619,105 @@ export default function BordadoPublico() {
               )}
             </div>
 
-            {/* Datos de Texto para el Bordado */}
+            {/* ✅ DATOS DE TEXTO CON TIPOGRAFÍA Y COLOR DE HILO */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Nombre a bordar</label>
-                <input name="bordado_nombre" value={form.bordado_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_nombre)} placeholder="Ej: Juan P." />
-                {errors.bordado_nombre && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_nombre}</p>}
+              
+              {/* Nombre + Tipo de Letra */}
+              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
+                <div>
+                  <label className="block text-sm font-bold mb-1.5 text-foreground">Nombre a bordar</label>
+                  <input name="bordado_nombre" value={form.bordado_nombre} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_nombre)} placeholder="Ej: Juan" />
+                  {errors.bordado_nombre && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_nombre}</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Tipo de letra (Nombre y Apellido)</label>
+                  <select name="tipo_letra_nombre" value={form.tipo_letra_nombre} onChange={handleChange} className={getInputClass(!!errors.tipo_letra_nombre)}>
+                    <option value="">Selecciona tipografía...</option>
+                    <option value="Arial">Arial (Letra imprenta)</option>
+                    <option value="Cursiva">Cursiva (Letra ligada)</option>
+                  </select>
+                  {errors.tipo_letra_nombre && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.tipo_letra_nombre}</p>}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Apellido a bordar</label>
-                <input name="bordado_apellido" value={form.bordado_apellido} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_apellido)} placeholder="Ej: Pérez M." />
-                {errors.bordado_apellido && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_apellido}</p>}
+
+              {/* Apellido */}
+              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
+                <div>
+                  <label className="block text-sm font-bold mb-1.5 text-foreground">Apellido a bordar</label>
+                  <input name="bordado_apellido" value={form.bordado_apellido} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_apellido)} placeholder="Ej: Pérez" />
+                  {errors.bordado_apellido && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_apellido}</p>}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Profesión / Carrera</label>
-                <input name="bordado_profesion" value={form.bordado_profesion} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_profesion)} placeholder="Ej: Enfermería" />
-                {errors.bordado_profesion && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_profesion}</p>}
+
+              {/* Profesión + Tipo de Letra */}
+              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
+                <div>
+                  <label className="block text-sm font-bold mb-1.5 text-foreground">Profesión / Carrera</label>
+                  <input name="bordado_profesion" value={form.bordado_profesion} onChange={handleChange} onBlur={handleBlur} className={getInputClass(!!errors.bordado_profesion)} placeholder="Ej: Enfermería" />
+                  {errors.bordado_profesion && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_profesion}</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Tipo de letra (Profesión)</label>
+                  <select name="tipo_letra_profesion" value={form.tipo_letra_profesion} onChange={handleChange} className={getInputClass(!!errors.tipo_letra_profesion)}>
+                    <option value="">Selecciona tipografía...</option>
+                    <option value="Arial">Arial (Letra imprenta)</option>
+                    <option value="Cursiva">Cursiva (Letra ligada)</option>
+                  </select>
+                  {errors.tipo_letra_profesion && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.tipo_letra_profesion}</p>}
+                </div>
               </div>
               
-              <div>
-                <label className="block text-sm font-medium mb-1.5 ml-1 text-foreground/80">Universidad / Institución</label>
-                <select 
-                  value={univOtra ? "Otra" : form.bordado_universidad} 
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === "Otra") {
-                      setUnivOtra(true);
-                      setForm(prev => ({ ...prev, bordado_universidad: "" }));
-                    } else {
-                      setUnivOtra(false);
-                      setForm(prev => ({ ...prev, bordado_universidad: val }));
-                    }
-                    setErrors(prev => ({ ...prev, bordado_universidad: "" }));
-                  }} 
-                  className={getInputClass(!!errors.bordado_universidad && !univOtra)}
-                >
-                  <option value="">Selecciona una opción...</option>
-                  <option value="INACAP">INACAP</option>
-                  <option value="Universidad Austral">Universidad Austral</option>
-                  <option value="Universidad San Sebastián">Universidad San Sebastián</option>
-                  <option value="Universidad Santo Tomás">Universidad Santo Tomás</option>
-                  <option value="Santo Tomás CFT">Santo Tomás CFT</option>
-                  <option value="Ninguna">Ninguna / No aplica</option>
-                  <option value="Otra">Otra institución...</option>
-                </select>
-                
-                {univOtra && (
-                  <input 
-                    name="bordado_universidad" 
-                    value={form.bordado_universidad} 
-                    onChange={handleChange} 
-                    onBlur={handleBlur}
-                    className={`mt-2 ${getInputClass(!!errors.bordado_universidad)}`} 
-                    placeholder="Escribe tu institución..." 
-                  />
-                )}
-                {errors.bordado_universidad && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_universidad}</p>}
+              {/* Universidad + Color de Hilo */}
+              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
+                <div>
+                  <label className="block text-sm font-bold mb-1.5 text-foreground">Universidad / Institución</label>
+                  <select 
+                    value={univOtra ? "Otra" : form.bordado_universidad} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "Otra") {
+                        setUnivOtra(true);
+                        setForm(prev => ({ ...prev, bordado_universidad: "" }));
+                      } else {
+                        setUnivOtra(false);
+                        setForm(prev => ({ ...prev, bordado_universidad: val }));
+                      }
+                      setErrors(prev => ({ ...prev, bordado_universidad: "" }));
+                    }} 
+                    className={getInputClass(!!errors.bordado_universidad && !univOtra)}
+                  >
+                    <option value="">Selecciona una opción...</option>
+                    <option value="INACAP">INACAP</option>
+                    <option value="Universidad Austral">Universidad Austral</option>
+                    <option value="Universidad San Sebastián">Universidad San Sebastián</option>
+                    <option value="Universidad Santo Tomás">Universidad Santo Tomás</option>
+                    <option value="Santo Tomás CFT">Santo Tomás CFT</option>
+                    <option value="Ninguna">Ninguna / No aplica</option>
+                    <option value="Otra">Otra institución...</option>
+                  </select>
+                  {univOtra && (
+                    <input 
+                      name="bordado_universidad" 
+                      value={form.bordado_universidad} 
+                      onChange={handleChange} 
+                      onBlur={handleBlur}
+                      className={`mt-2 ${getInputClass(!!errors.bordado_universidad)}`} 
+                      placeholder="Escribe tu institución..." 
+                    />
+                  )}
+                  {errors.bordado_universidad && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_universidad}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Color del Hilo (Textos)</label>
+                  <select name="color_hilo" value={form.color_hilo} onChange={handleChange} className={getInputClass(!!errors.color_hilo)}>
+                    <option value="">Selecciona un color...</option>
+                    <option value="Verde">Verde</option>
+                    <option value="Blanco">Blanco</option>
+                    <option value="Negro">Negro</option>
+                  </select>
+                  {errors.color_hilo && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.color_hilo}</p>}
+                </div>
               </div>
 
             </div>
@@ -685,7 +729,7 @@ export default function BordadoPublico() {
               <AlignLeft className="w-5 h-5 text-primary" /> 4. Especificaciones del Bordado
             </h2>
             <p className="text-sm text-muted-foreground mb-4">
-              * Estas indicaciones son <strong className="text-primary font-semibold">obligatorias</strong> para realizar tu bordado correctamente.
+              * Escribe aquí solo si tienes alguna petición especial (Ej: Tamaño específico, omitir un detalle del logo, etc.).
             </p>
             <textarea 
               name="especificaciones" 
@@ -693,7 +737,7 @@ export default function BordadoPublico() {
               onChange={handleChange} 
               onBlur={handleBlur}
               className={`${getInputClass(!!errors.especificaciones)} min-h-[100px] resize-y`} 
-              placeholder="Ej: Lo necesito bordado en el lado izquierdo del pecho, usar hilo azul marino, etc..."
+              placeholder="Escribe aquí tus observaciones adicionales..."
             />
             {errors.especificaciones && (
               <p className="text-sm text-red-500 mt-2 font-medium flex items-center gap-1">
