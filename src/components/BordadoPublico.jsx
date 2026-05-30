@@ -104,9 +104,9 @@ export default function BordadoPublico() {
     lado_bordado: "",      
     tiene_bolsillo: "",    
     posicion_bolsillo: "", 
-    tipo_letra_nombre: "",    // ✅ NUEVO
-    tipo_letra_profesion: "", // ✅ NUEVO
-    color_hilo: "",           // ✅ NUEVO
+    tipo_letra_nombre: "",    
+    tipo_letra_profesion: "", 
+    color_hilo: "",           
     especificaciones: "" 
   })
 
@@ -127,9 +127,9 @@ export default function BordadoPublico() {
     lado_bordado: "",
     tiene_bolsillo: "",
     posicion_bolsillo: "",
-    tipo_letra_nombre: "",    // ✅ NUEVO
-    tipo_letra_profesion: "", // ✅ NUEVO
-    color_hilo: "",           // ✅ NUEVO
+    tipo_letra_nombre: "",    
+    tipo_letra_profesion: "", 
+    color_hilo: "",           
     especificaciones: "",
     logoFile: ""
   })
@@ -291,7 +291,6 @@ export default function BordadoPublico() {
       newErrors.posicion_bolsillo = "Debes elegir la posición del bordado respecto al bolsillo"; hasError = true; 
     }
 
-    // ✅ Nuevas validaciones
     if (!form.tipo_letra_nombre) { newErrors.tipo_letra_nombre = "Requerido"; hasError = true; }
     if (!form.tipo_letra_profesion) { newErrors.tipo_letra_profesion = "Requerido"; hasError = true; }
     if (!form.color_hilo) { newErrors.color_hilo = "Requerido"; hasError = true; }
@@ -333,7 +332,6 @@ export default function BordadoPublico() {
       const opcionSeleccionada = logoOptions.find(opt => opt.id === form.modelo_bordado);
       const nombreModeloBordado = opcionSeleccionada ? opcionSeleccionada.alt : form.modelo_bordado;
 
-      // ✅ Enviamos todo estructurado al backend
       const payload = {
         contacto_folio: form.contacto_folio.trim(), 
         contacto_nombre: form.contacto_nombre.trim(),
@@ -619,10 +617,10 @@ export default function BordadoPublico() {
               )}
             </div>
 
-            {/* ✅ DATOS DE TEXTO CON TIPOGRAFÍA Y COLOR DE HILO */}
+            {/* ✅ DATOS DE TEXTO CON SELECTORES VISUALES */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               
-              {/* Nombre + Tipo de Letra */}
+              {/* Nombre + Tipo de Letra Visual */}
               <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
                 <div>
                   <label className="block text-sm font-bold mb-1.5 text-foreground">Nombre a bordar</label>
@@ -630,12 +628,20 @@ export default function BordadoPublico() {
                   {errors.bordado_nombre && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_nombre}</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Tipo de letra (Nombre y Apellido)</label>
-                  <select name="tipo_letra_nombre" value={form.tipo_letra_nombre} onChange={handleChange} className={getInputClass(!!errors.tipo_letra_nombre)}>
-                    <option value="">Selecciona tipografía...</option>
-                    <option value="Arial">Arial (Letra imprenta)</option>
-                    <option value="Cursiva">Cursiva (Letra ligada)</option>
-                  </select>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Tipo de Letra (Nombre y Apellido)</label>
+                  <div className="flex gap-2">
+                    <label className={`flex-1 border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${form.tipo_letra_nombre === 'Arial' ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border hover:bg-muted bg-card'} ${errors.tipo_letra_nombre ? 'border-red-300' : ''}`}>
+                      <input type="radio" name="tipo_letra_nombre" value="Arial" checked={form.tipo_letra_nombre === 'Arial'} onChange={handleChange} className="sr-only" />
+                      <span className="block font-sans text-base font-semibold text-foreground">Arial</span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5">Imprenta</span>
+                    </label>
+                    <label className={`flex-1 border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${form.tipo_letra_nombre === 'Cursiva' ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border hover:bg-muted bg-card'} ${errors.tipo_letra_nombre ? 'border-red-300' : ''}`}>
+                      <input type="radio" name="tipo_letra_nombre" value="Cursiva" checked={form.tipo_letra_nombre === 'Cursiva'} onChange={handleChange} className="sr-only" />
+                      {/* Usamos fuentes genéricas seguras para que se vea como cursiva en cualquier PC/Celular */}
+                      <span className="block text-[1.15rem] leading-tight text-foreground" style={{ fontFamily: "cursive, 'Brush Script MT', 'Lucida Handwriting'" }}>Cursiva</span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5">Ligada</span>
+                    </label>
+                  </div>
                   {errors.tipo_letra_nombre && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.tipo_letra_nombre}</p>}
                 </div>
               </div>
@@ -649,7 +655,7 @@ export default function BordadoPublico() {
                 </div>
               </div>
 
-              {/* Profesión + Tipo de Letra */}
+              {/* Profesión + Tipo de Letra Visual */}
               <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
                 <div>
                   <label className="block text-sm font-bold mb-1.5 text-foreground">Profesión / Carrera</label>
@@ -657,18 +663,25 @@ export default function BordadoPublico() {
                   {errors.bordado_profesion && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.bordado_profesion}</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Tipo de letra (Profesión)</label>
-                  <select name="tipo_letra_profesion" value={form.tipo_letra_profesion} onChange={handleChange} className={getInputClass(!!errors.tipo_letra_profesion)}>
-                    <option value="">Selecciona tipografía...</option>
-                    <option value="Arial">Arial (Letra imprenta)</option>
-                    <option value="Cursiva">Cursiva (Letra ligada)</option>
-                  </select>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Tipo de Letra (Profesión)</label>
+                  <div className="flex gap-2">
+                    <label className={`flex-1 border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${form.tipo_letra_profesion === 'Arial' ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border hover:bg-muted bg-card'} ${errors.tipo_letra_profesion ? 'border-red-300' : ''}`}>
+                      <input type="radio" name="tipo_letra_profesion" value="Arial" checked={form.tipo_letra_profesion === 'Arial'} onChange={handleChange} className="sr-only" />
+                      <span className="block font-sans text-base font-semibold text-foreground">Arial</span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5">Imprenta</span>
+                    </label>
+                    <label className={`flex-1 border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${form.tipo_letra_profesion === 'Cursiva' ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border hover:bg-muted bg-card'} ${errors.tipo_letra_profesion ? 'border-red-300' : ''}`}>
+                      <input type="radio" name="tipo_letra_profesion" value="Cursiva" checked={form.tipo_letra_profesion === 'Cursiva'} onChange={handleChange} className="sr-only" />
+                      <span className="block text-[1.15rem] leading-tight text-foreground" style={{ fontFamily: "cursive, 'Brush Script MT', 'Lucida Handwriting'" }}>Cursiva</span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5">Ligada</span>
+                    </label>
+                  </div>
                   {errors.tipo_letra_profesion && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.tipo_letra_profesion}</p>}
                 </div>
               </div>
               
-              {/* Universidad + Color de Hilo */}
-              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50">
+              {/* Universidad + Color de Hilo Visual */}
+              <div className="space-y-3 bg-muted/10 p-3 rounded-xl border border-border/50 flex flex-col justify-between">
                 <div>
                   <label className="block text-sm font-bold mb-1.5 text-foreground">Universidad / Institución</label>
                   <select 
@@ -709,13 +722,25 @@ export default function BordadoPublico() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wider">Color del Hilo (Textos)</label>
-                  <select name="color_hilo" value={form.color_hilo} onChange={handleChange} className={getInputClass(!!errors.color_hilo)}>
-                    <option value="">Selecciona un color...</option>
-                    <option value="Verde">Verde</option>
-                    <option value="Blanco">Blanco</option>
-                    <option value="Negro">Negro</option>
-                  </select>
+                  <label className="block text-xs font-semibold mb-2 mt-2 text-muted-foreground uppercase tracking-wider">Color del Hilo (Textos)</label>
+                  <div className={`flex gap-4 p-2 rounded-xl bg-card border-2 ${errors.color_hilo ? 'border-red-300 bg-red-50/30' : 'border-transparent'}`}>
+                    {[
+                      { val: 'Verde', hex: '#059669', label: 'Verde' },
+                      { val: 'Blanco', hex: '#FFFFFF', label: 'Blanco', border: true },
+                      { val: 'Negro', hex: '#111827', label: 'Negro' }
+                    ].map(color => (
+                      <label key={color.val} className="flex-1 flex flex-col items-center gap-1.5 cursor-pointer group">
+                         <input type="radio" name="color_hilo" value={color.val} checked={form.color_hilo === color.val} onChange={handleChange} className="sr-only" />
+                         <div 
+                           className={`w-8 h-8 rounded-full transition-all duration-200 shadow-sm ${form.color_hilo === color.val ? 'ring-2 ring-offset-2 ring-primary scale-110' : 'group-hover:scale-110'} ${color.border ? 'border border-gray-300' : ''}`} 
+                           style={{ backgroundColor: color.hex }}
+                         />
+                         <span className={`text-[11px] font-bold ${form.color_hilo === color.val ? 'text-primary' : 'text-muted-foreground'}`}>
+                           {color.label}
+                         </span>
+                      </label>
+                    ))}
+                  </div>
                   {errors.color_hilo && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.color_hilo}</p>}
                 </div>
               </div>
