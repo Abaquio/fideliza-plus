@@ -4,9 +4,13 @@ import { validarEmail, validarYNormalizarNombre } from "../../utils/validaciones
 import ConfirmDialog from "../../ui/confirm"
 
 function getApiBase() {
+  const fromEnv = import.meta?.env?.VITE_API_URL
+  if (fromEnv) return String(fromEnv).replace(/\/$/, "")
   const host = window.location.hostname
   if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
-  return "https://fideliza-plus.onrender.com"
+  // En producción, la variable VITE_API_URL DEBE estar configurada en Vercel.
+  // Devolver un string vacío hará que las peticiones fallen de forma obvia si no lo está.
+  return ""
 }
 
 function getToken() {

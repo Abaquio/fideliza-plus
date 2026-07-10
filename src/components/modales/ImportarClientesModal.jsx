@@ -6,7 +6,16 @@ import { RefreshCw, Trash2, Link2, Plus, Eye, Pencil, Save, X, AlertTriangle, Ar
 import ConfirmDialog from "../../ui/confirm"
 import ValidadoCard from "../../ui/validado"
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
+const API_URL = (() => {
+  const fromEnv = import.meta.env.VITE_API_URL;
+  if (fromEnv) return String(fromEnv).replace(/\/$/, "");
+
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1") {
+    return "http://localhost:4000";
+  }
+  return "";
+})();
 
 function getAuthToken() {
   return (
