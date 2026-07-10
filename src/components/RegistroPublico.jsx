@@ -20,7 +20,7 @@ function getApiBase() {
   if (fromEnv) return String(fromEnv).replace(/\/$/, "")
   const host = window.location.hostname
   if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
-  return "https://fideliza-plus.onrender.com"
+  return "https://fideliza-plus-production.up.railway.app"
 }
 
 export default function RegistroPublico() {

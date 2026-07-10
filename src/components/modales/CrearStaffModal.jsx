@@ -204,13 +204,16 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
 
       // ✅ CORRECCIÓN 2: Asegurar que enviamos un string al backend
       let nombreFinal = form.nombre.trim();
+      let nombreFinal = String(form.nombre || '').trim();
       try {
          const resultado = validarYNormalizarNombre(form.nombre);
+         const resultado = validarYNormalizarNombre(nombreFinal);
          nombreFinal = (typeof resultado === 'object' && resultado.valor) 
             ? resultado.valor 
             : resultado;
       } catch (e) {
          // Si falla pero forzamos envío, usamos lo que hay en el input
+         // Si la validación falla, al menos nos aseguramos de que `nombreFinal` es un string.
       }
 
       const payload = {
