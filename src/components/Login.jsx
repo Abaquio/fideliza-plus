@@ -16,7 +16,7 @@ export default function Login() {
     const isProd = import.meta.env.MODE === "production"
 
     const fallback = isProd
-      ? "https://fideliza-plus.onrender.com"
+      ? "https://fideliza-plus-production.up.railway.app"
       : "http://localhost:4000"
 
     const raw = (import.meta?.env?.VITE_API_URL || fallback).replace(/\/$/, "")

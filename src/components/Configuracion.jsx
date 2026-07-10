@@ -16,15 +16,9 @@ export default function Configuracion() {
    * - Si no, se le agrega /api
    */
   const API_BASE = useMemo(() => {
-    const fromEnv = import.meta?.env?.VITE_API_URL;
-    let base = "";
-    if (fromEnv) {
-      base = String(fromEnv).replace(/\/$/, "");
-    } else {
-      const host = window.location.hostname;
-      if (host === "localhost" || host === "127.0.0.1") base = "http://localhost:4000";
-    }
-    const raw = base;
+    const isProd = import.meta.env.MODE === "production"
+    const fallback = isProd ? "https://fideliza-plus-production.up.railway.app" : "http://localhost:4000"
+    const raw = (import.meta?.env?.VITE_API_URL || fallback).replace(/\/$/, "")
     return raw.endsWith("/api") ? raw : `${raw}/api`
   }, [])
 

@@ -4,13 +4,9 @@ import { validarEmail, validarYNormalizarNombre } from "../../utils/validaciones
 import ConfirmDialog from "../../ui/confirm"
 
 function getApiBase() {
-  const fromEnv = import.meta?.env?.VITE_API_URL
-  if (fromEnv) return String(fromEnv).replace(/\/$/, "")
   const host = window.location.hostname
   if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000"
-  // En producción, la variable VITE_API_URL DEBE estar configurada en Vercel.
-  // Devolver un string vacío hará que las peticiones fallen de forma obvia si no lo está.
-  return ""
+  return "https://fideliza-plus-production.up.railway.app"
 }
 
 function getToken() {
@@ -204,16 +200,13 @@ export default function CrearStaffModal({ open, onClose, onSaved, editingMember 
 
       // ✅ CORRECCIÓN 2: Asegurar que enviamos un string al backend
       let nombreFinal = form.nombre.trim();
-      let nombreFinal = String(form.nombre || '').trim();
       try {
          const resultado = validarYNormalizarNombre(form.nombre);
-         const resultado = validarYNormalizarNombre(nombreFinal);
          nombreFinal = (typeof resultado === 'object' && resultado.valor) 
             ? resultado.valor 
             : resultado;
       } catch (e) {
          // Si falla pero forzamos envío, usamos lo que hay en el input
-         // Si la validación falla, al menos nos aseguramos de que `nombreFinal` es un string.
       }
 
       const payload = {
